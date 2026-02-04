@@ -124,7 +124,7 @@ The service outputs colored logs during operation:
 2. Verify that `Base_url` is correctly pointing to your model service address
 3. If you encounter translation quality issues, try adjusting `temperature` and `top_p` parameters
 4. SakuraLLM v3 or newer model versions are recommended
-5. Tested on laptop RTX 4070: GalTransl-v4-4B-2512 model runs fast enough for real-time translation (RTX 4060/4060 Ti should have similar performance)
+5. Tested on laptop RTX 4070: GalTransl-v4-4B-2601 model runs fast enough for real-time translation (RTX 4060/4060 Ti should have similar performance)
 
 ## Acknowledgments
 
