@@ -1,8 +1,5 @@
 from flask import Flask, request, render_template_string
 from gevent.pywsgi import WSGIServer
-from urllib.parse import unquote
-from queue import Queue
-import concurrent.futures
 import os
 import re
 import time
@@ -117,14 +114,14 @@ def is_expressive_text(text):
 
 
 def has_repeated_sequence(text, count):
-    """检测是否有过度重复的短语或单字
-    
-    注意：这个检测应该比较宽松，只有真正异常的重复才返回true
+    """检测是否有过度重复的单字或短语（连续出现）
+
+    注意：这个检测应该比较宽松，只有真正异常的连续重复才返回 True
     某些字符在原文中本来就会重复出现（如感叹词、符号等），应排除这些字符
     """
-    if not text or len(text) < count:
+    if not text or count <= 1:
         return False
-    
+
     # 排除的字符：标点、符号、数字、以及常见的可重复字符
     exclude_chars = set(
         "，。？！、…「」『』（）(),.!?~～♥♡❤★☆・―—-" +  # 标点和符号
@@ -132,39 +129,51 @@ def has_repeated_sequence(text, count):
         "　 \t\n" +  # 空白字符
         "啊呀哦嗯呜哈唔噢嘿咦呵喂唤"  # 常见感叹词
     )
-    
-    # 检查单个字符的重复 - 只检测真正异常的重复
-    for char in set(text):
-        if char not in exclude_chars:
-            char_count = text.count(char)
-            # 中文字符需要更高的量才认为是问题
-            if ord(char) > 0x4E00:  # 中文范围
-                if char_count >= count + 3:
-                    return True
-            else:
-                if char_count >= count:
-                    return True
 
-    # 检查短语重复（3字符及以上）- 只检测较长的重复短语
-    # 排除常见的重复模式
+    # 检查单个字符的连续重复 - 只检测真正异常的重复
+    current_char = None
+    run_length = 0
+    for char in text:
+        if char == current_char:
+            run_length += 1
+        else:
+            current_char = char
+            run_length = 1
+
+        if char in exclude_chars:
+            continue
+
+        # 中文字符需要更高的量才认为是问题
+        threshold = count + 3 if 0x4E00 <= ord(char) <= 0x9FFF else count
+        if run_length >= threshold:
+            return True
+
+    # 检查短语的连续重复
     exclude_patterns = {"……", "...", "~~", "♥♥", "！！", "??", "——", "――", "--"}
-    
-    # 只检查3字符及以上的重复
-    max_size = min(len(text) // count + 1, 8)
-    for size in range(3, max_size):
-        seen = {}
-        for i in range(len(text) - size + 1):
+    max_size = min(len(text) // count, 8)
+
+    for size in range(2, max_size + 1):
+        for i in range(len(text) - size * count + 1):
             substring = text[i:i + size]
+
             # 跳过被排除的模式
             if substring in exclude_patterns:
                 continue
+
             # 跳过全是排除字符的子串
             if all(c in exclude_chars for c in substring):
                 continue
-            seen[substring] = seen.get(substring, 0) + 1
-            # 需要更高的重复次数才触发
-            if seen[substring] >= count:
+
+            repeated = True
+            for j in range(1, count):
+                start = i + j * size
+                if text[start:start + size] != substring:
+                    repeated = False
+                    break
+
+            if repeated:
                 return True
+
     return False
 
 
@@ -172,27 +181,27 @@ def process_special_chars(original_text, translated_text):
     """处理特殊字符（引号和标点）"""
     if not translated_text:
         return translated_text
-        
+
     # 处理「」引号
     if original_text.startswith("「") and original_text.endswith("」"):
         if not translated_text.startswith("「"):
             translated_text = "「" + translated_text
         if not translated_text.endswith("」"):
             translated_text = translated_text + "」"
-    
+
     # 处理末尾标点同步
-    special_chars = ["，", "。", "？", "！", "..."]
-    orig_end = original_text[-1] if original_text else ""
-    trans_end = translated_text[-1] if translated_text else ""
-    
-    if orig_end in special_chars:
-        if trans_end in special_chars and trans_end != orig_end:
-            translated_text = translated_text[:-1] + orig_end
-        elif trans_end not in special_chars:
+    special_chars = ["……", "...", "，", "。", "？", "！"]
+    orig_end = next((chars for chars in special_chars if original_text.endswith(chars)), "")
+    trans_end = next((chars for chars in special_chars if translated_text.endswith(chars)), "")
+
+    if orig_end:
+        if trans_end and trans_end != orig_end:
+            translated_text = translated_text[:-len(trans_end)] + orig_end
+        elif not trans_end:
             translated_text += orig_end
-    elif trans_end in special_chars:
-        translated_text = translated_text[:-1]
-    
+    elif trans_end:
+        translated_text = translated_text[:-len(trans_end)]
+
     return translated_text
 
 
@@ -332,10 +341,9 @@ def validate_translation(translation, original_text, original_japanese=None):
 
 
 # ==================== 翻译核心逻辑 ====================
-def handle_translation(text, translation_queue):
+def handle_translation(text):
     """处理翻译请求的核心函数"""
-    
-    text = unquote(text)
+
     original_text = text  # 保存原始文本用于特殊字符处理
     
     # 如果文本被「」包裹，在翻译时先移除
@@ -348,8 +356,7 @@ def handle_translation(text, translation_queue):
         if is_mostly_kanji_or_simple(text) and len(text) <= 10:
             print(f"\033[36m[译文]\033[0m: \033[32m{original_text}\033[0m (纯汉字/符号，跳过翻译)")
             print("-" * 80)
-            translation_queue.put(original_text)
-            return
+            return original_text
         
         # 复制模型参数
         model_params = default_model_params.copy()
@@ -412,25 +419,25 @@ def handle_translation(text, translation_queue):
         if is_valid and translation:
             # 处理特殊字符
             translation = process_special_chars(original_text, translation)
-            
+
             print(f"\033[36m[译文]\033[0m: \033[32m{translation}\033[0m")
             print("-" * 80)
-            translation_queue.put(translation)
+            return translation
         elif translation:
             # 即使验证失败，也输出翻译结果（比完全失败好）
             translation = process_special_chars(original_text, translation)
-            
+
             print(f"\033[33m[WARN] 翻译结果可能不完美，但仍输出\033[0m")
             print(f"\033[36m[译文]\033[0m: \033[33m{translation}\033[0m")
             print("-" * 80)
-            translation_queue.put(translation)
+            return translation
         else:
             print(f"\033[31m[ERROR] 翻译失败，无法获取翻译结果\033[0m")
-            translation_queue.put(False)
-            
+            return False
+
     except Exception as e:
         print(f"\033[31m[ERROR] 翻译过程出错: {e}\033[0m")
-        translation_queue.put(False)
+        return False
 
 
 # ==================== Flask 路由 ====================
@@ -440,26 +447,14 @@ def translate():
     text = request.args.get("text")
     if not text:
         return "缺少text参数", 400
-    
+
     print(f"\033[36m[原文]\033[0m: \033[35m{text}\033[0m")
-    
+
     # 处理换行符
     text = text.replace("\n", "\\n")
-    
-    translation_queue = Queue()
-    
-    # 使用线程池处理翻译
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(handle_translation, text, translation_queue)
-        
-        try:
-            future.result(timeout=Request_Timeout + 5)
-        except concurrent.futures.TimeoutError:
-            print("\033[31m[ERROR] 翻译请求超时\033[0m")
-            return "[请求超时] " + text, 500
-    
-    translation = translation_queue.get()
-    
+
+    translation = handle_translation(text)
+
     if isinstance(translation, str):
         translation = translation.replace("\\n", "\n")
         return translation
