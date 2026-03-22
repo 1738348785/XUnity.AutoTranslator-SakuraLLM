@@ -12,7 +12,7 @@ This service is optimized for visual novel/Galgame translation, featuring intell
 
 ### Translation Quality Control
 - **Smart Validation**: Automatically detects translation quality issues such as empty translations, echoing original text, or containing Japanese characters
-- **Repetition Detection**: Detects abnormal repeated phrases in translations and automatically adjusts parameters for retry
+- **Repetition Detection**: Detects abnormal consecutive repeated phrases or characters in translations and automatically adjusts parameters for retry
 - **Onomatopoeia Recognition**: Intelligently identifies onomatopoeia/emotional expressions to avoid false positives on intentional repetition patterns
 - **Garbage Content Cleanup**: Automatically cleans up training data residue from model output
 
@@ -23,7 +23,8 @@ This service is optimized for visual novel/Galgame translation, featuring intell
 
 ### Text Processing
 - **Special Character Handling**: Automatically handles「」quotation marks to maintain format consistency
-- **Punctuation Synchronization**: Automatically synchronizes ending punctuation between original and translated text
+- **Punctuation Synchronization**: Automatically synchronizes ending punctuation between original and translated text, including `……` and `...`
+- **Short Text Pass-through**: Returns very short texts that are mostly Kanji, numbers, or symbols as-is to avoid unnecessary retries
 - **Think Tag Cleanup**: Automatically removes `<think>` tag content from model output
 
 ## Requirements
@@ -105,9 +106,9 @@ Url=http://127.0.0.1:4000/translate
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `repeat_count` | Threshold for repetition detection | 8 |
+| `repeat_count` | Threshold for consecutive repetition detection | 8 |
 | `max_retries` | Maximum retry attempts | 3 |
-| `Request_Timeout` | API request timeout (seconds) | 30 |
+| `Request_Timeout` | API request timeout (seconds) | 20 |
 
 ## Log Output
 
@@ -124,7 +125,8 @@ The service outputs colored logs during operation:
 2. Verify that `Base_url` is correctly pointing to your model service address
 3. If you encounter translation quality issues, try adjusting `temperature` and `top_p` parameters
 4. SakuraLLM v3 or newer model versions are recommended
-5. Tested on laptop RTX 4070: GalTransl-v4-4B-2601 model runs fast enough for real-time translation (RTX 4060/4060 Ti should have similar performance)
+5. For very short texts that are pure Kanji or mostly Kanji, the service may return the original text directly; this is expected behavior
+6. Tested on laptop RTX 4070: GalTransl-v4-4B-2601 model runs fast enough for real-time translation (RTX 4060/4060 Ti should have similar performance)
 
 ## Acknowledgments
 
