@@ -1,6 +1,6 @@
 # SakuraLLM Translation Service
 
-[中文版本](README_zh.md)
+[中文版本](README.md)
 
 ## Introduction
 
