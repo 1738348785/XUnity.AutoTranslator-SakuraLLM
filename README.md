@@ -47,12 +47,13 @@ pip install flask gevent requests
 ```python
 # API配置
 Base_url = "http://127.0.0.1:8080"  # API 请求地址
+API_Key = ""  # API 密钥，需要鉴权时填写，留空则不发送 Authorization 请求头
+Custom_Headers = {
+    # "reasoning_effort": "low",  # 为了方便编辑可写在这里，发送时会自动转入请求体
+    # "X-Your-Header": "your-value",
+}
 Model_Type = "GalTransl-v4-4B-2601"  # 模型名称
 Request_Timeout = 20  # 请求超时时间（秒）
-
-# 翻译质量控制
-repeat_count = 8  # 译文中有任意单字或单词连续出现大于等于此次数，则重试
-max_retries = 3  # 最大重试次数
 
 # 模型参数
 default_model_params = {

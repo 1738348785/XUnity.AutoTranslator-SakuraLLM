@@ -11,6 +11,11 @@ os.system("")
 # ==================== 配置区域 ====================
 # API配置
 Base_url = "http://127.0.0.1:8080"  # API 请求地址
+API_Key = ""  # API 密钥，需要鉴权时填写，留空则不发送 Authorization 请求头
+Custom_Headers = {
+    # "reasoning_effort": "low",
+    # "X-Your-Header": "your-value",
+}
 Model_Type = "GalTransl-v4-4B-2601"  # 模型名称，本地部署好像随意，填或不填好像都行
 Request_Timeout = 20 # 请求超时时间（秒）
 
@@ -211,7 +216,10 @@ def process_special_chars(original_text, translated_text):
 def call_translation_api(text, model_params):
     """调用翻译API"""
     user_content = text
-    
+
+    headers = dict(Custom_Headers)
+    reasoning_effort = headers.pop("reasoning_effort", None)
+
     request_data = {
         "model": Model_Type,
         "messages": [
@@ -221,10 +229,16 @@ def call_translation_api(text, model_params):
         "stream": False,
         **model_params,
     }
-    
+    if reasoning_effort is not None:
+        request_data["reasoning_effort"] = reasoning_effort
+
+    if API_Key:
+        headers["Authorization"] = f"Bearer {API_Key}"
+
     response = requests.post(
         f"{Base_url}/v1/chat/completions",
         json=request_data,
+        headers=headers,
         timeout=Request_Timeout
     )
     response.raise_for_status()

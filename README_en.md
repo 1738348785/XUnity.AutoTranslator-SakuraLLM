@@ -47,12 +47,13 @@ Edit the configuration section in `SakuraLLM.py`:
 ```python
 # API Configuration
 Base_url = "http://127.0.0.1:8080"  # API request URL
+API_Key = ""  # API key, fill in when authentication is required; leave empty to skip Authorization header
+Custom_Headers = {
+    # "reasoning_effort": "low",  # You can place it here for convenience; it will be moved into the request body automatically
+    # "X-Your-Header": "your-value",
+}
 Model_Type = "GalTransl-v4-4B-2601"  # Model name
 Request_Timeout = 20  # Request timeout in seconds
-
-# Translation Quality Control
-repeat_count = 8  # Retry if any character/word appears consecutively >= this count
-max_retries = 3  # Maximum retry attempts
 
 # Model Parameters
 default_model_params = {
