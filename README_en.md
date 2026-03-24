@@ -175,7 +175,3 @@ The service outputs the following colored logs during operation:
 - Thanks to [as176590811/XUnity.AutoTranslator-chatgpt](https://github.com/as176590811/XUnity.AutoTranslator-chatgpt) for the original code
 - Thanks to [SKIPPINGpetticoatconvent/XUnity.AutoTranslator-ollama](https://github.com/SKIPPINGpetticoatconvent/XUnity.AutoTranslator-ollama) for code modifications
 - Thanks to [PiDanShouRouZhouXD/Sakura_Launcher_GUI](https://github.com/PiDanShouRouZhouXD/Sakura_Launcher_GUI) for the Sakura Launcher
-
-## License
-
-MIT License
