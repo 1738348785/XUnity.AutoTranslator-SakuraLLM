@@ -26,6 +26,7 @@ This service is optimized for visual novel/Galgame translation, featuring intell
 - **Punctuation Synchronization**: Automatically synchronizes ending punctuation between original and translated text, including `……` and `...`
 - **Short Text Pass-through**: Returns very short texts that are mostly Kanji, numbers, or symbols as-is to avoid unnecessary retries
 - **Think Tag Cleanup**: Automatically removes `<think>` tag content from model output
+- **Configurable Newline Handling**: Supports `escape`, `keep`, and `split_lines` modes
 
 ## Requirements
 
@@ -54,6 +55,7 @@ Custom_Headers = {
 }
 Model_Type = "GalTransl-v4-4B-2601"  # Model name
 Request_Timeout = 20  # Request timeout in seconds
+Newline_Mode = "escape"  # Newline handling: escape / keep / split_lines
 
 # Model Parameters
 default_model_params = {
@@ -64,13 +66,15 @@ default_model_params = {
 }
 ```
 
+If you want to further customize translation style, terminology constraints, or tone, you can continue editing `system_prompt`.
+
 ### 3. Start the Service
 
 ```bash
 python SakuraLLM.py
 ```
 
-The service will listen on `http://127.0.0.1:4000` after startup.
+> The service will listen on `http://127.0.0.1:4000` after startup.
 
 ## Usage
 
@@ -92,7 +96,21 @@ FallbackEndpoint=
 Url=http://127.0.0.1:4000/translate
 ```
 
+> After configuration, XUnity.AutoTranslator will send source text to this service through `GET /translate?text=...`.
+
 ## Configuration Reference
+
+All options below are defined in the configuration section near the top of `SakuraLLM.py` and can be edited directly.
+
+### API Configuration
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `Base_url` | Upstream SakuraLLM / OpenAI-compatible API service URL | `http://127.0.0.1:8080` |
+| `API_Key` | API key; when empty, no `Authorization` header is sent | `""` |
+| `Custom_Headers` | Extra request headers; `reasoning_effort` will be moved into the request body automatically | `{}` |
+| `Model_Type` | Model name used in requests | `GalTransl-v4-4B-2601` |
+| `Request_Timeout` | Timeout for a single API request in seconds | `20` |
 
 ### Model Parameters
 
@@ -103,6 +121,17 @@ Url=http://127.0.0.1:4000/translate
 | `top_p` | Nucleus sampling parameter | 0.8 |
 | `frequency_penalty` | Frequency penalty to reduce repetition | 0.0 |
 
+### Newline Handling
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `Newline_Mode` | `escape`: translate as a whole after escaping newlines; `keep`: translate as a whole while preserving real newlines; `split_lines`: translate each line separately and rejoin | `escape` |
+
+#### Mode suggestions
+- `escape`: keeps the original default behavior and is the safest starting point
+- `keep`: useful when you want the model to consider multi-line context as a whole
+- `split_lines`: useful for menus, short UI strings, or clearly separated lines
+
 ### Translation Quality Settings
 
 | Parameter | Description | Default |
@@ -111,9 +140,19 @@ Url=http://127.0.0.1:4000/translate
 | `max_retries` | Maximum retry attempts | 3 |
 | `Request_Timeout` | API request timeout (seconds) | 20 |
 
+### Built-in Behaviors
+
+The following behaviors are currently implemented in code and work without extra configuration:
+
+- Detects empty translations, echoed source text, prompt echo, refusal-style replies, and Japanese characters in output
+- Cleans `<think>` tags and some training-data residue from model output automatically
+- Returns very short texts that are mostly Kanji, numbers, or symbols as-is
+- Synchronizes `「」` quotation marks and common sentence-ending punctuation automatically
+- Adjusts `temperature` and `frequency_penalty` automatically when abnormal repetition is detected
+
 ## Log Output
 
-The service outputs colored logs during operation:
+The service outputs the following colored logs during operation:
 
 - 🔵 **[原文]**: Received original Japanese text
 - 🟢 **[译文]**: Successfully translated result

@@ -18,6 +18,7 @@ Custom_Headers = {
 }
 Model_Type = "GalTransl-v4-4B-2601"  # 模型名称，本地部署好像随意，填或不填好像都行
 Request_Timeout = 20 # 请求超时时间（秒）
+Newline_Mode = "escape"  # 换行处理模式：escape(转义后整体翻译) / keep(保留换行整体翻译) / split_lines(按行分别翻译)
 
 # 翻译质量控制
 repeat_count = 8  # 译文中有任意单字或单词连续出现大于等于此次数，则重试
@@ -210,7 +211,17 @@ def process_special_chars(original_text, translated_text):
     return translated_text
 
 
+def resolve_newline_mode(show_warning=False):
+    """规范化换行处理模式，非法值回退到 escape"""
+    normalized = str(Newline_Mode).strip().lower()
+    valid_modes = {"escape", "keep", "split_lines"}
 
+    if normalized not in valid_modes:
+        if show_warning:
+            print(f"\033[33m[WARN] 无效的 Newline_Mode: {Newline_Mode!r}，已回退到 escape\033[0m")
+        return "escape"
+
+    return normalized
 
 
 def call_translation_api(text, model_params):
@@ -355,15 +366,15 @@ def validate_translation(translation, original_text, original_japanese=None):
 
 
 # ==================== 翻译核心逻辑 ====================
-def handle_translation(text):
-    """处理翻译请求的核心函数"""
+def translate_text(text):
+    """翻译单段文本（不负责换行模式分发）"""
 
     original_text = text  # 保存原始文本用于特殊字符处理
-    
+
     # 如果文本被「」包裹，在翻译时先移除
     if text.startswith("「") and text.endswith("」"):
         text = text[1:-1]
-    
+
     try:
         # 检查是否为极短的纯汉字/中性文本，直接返回原文
         # 这类文本翻译后应该相同，且容易导致模型回显提示词
@@ -371,22 +382,22 @@ def handle_translation(text):
             print(f"\033[36m[译文]\033[0m: \033[32m{original_text}\033[0m (纯汉字/符号，跳过翻译)")
             print("-" * 80)
             return original_text
-        
+
         # 复制模型参数
         model_params = default_model_params.copy()
-        
+
         translation = None
         is_valid = False
         retries = 0
-        
+
         while retries < max_retries:
             try:
                 # 调用API
                 translation = call_translation_api(text, model_params)
-                
+
                 # 验证翻译质量
                 is_valid, reason = validate_translation(translation, text, original_text)
-                
+
                 if is_valid:
                     break
                 elif reason == "repeat":
@@ -420,7 +431,7 @@ def handle_translation(text):
                 elif reason == "empty":
                     print(f"\033[33m[WARN] 翻译结果为空，重试中\033[0m")
                     retries += 1
-                    
+
             except requests.exceptions.Timeout:
                 retries += 1
                 print(f"\033[31m[ERROR] API请求超时，第 {retries}/{max_retries} 次重试\033[0m")
@@ -429,7 +440,7 @@ def handle_translation(text):
                 retries += 1
                 print(f"\033[31m[ERROR] API请求失败: {e}，第 {retries}/{max_retries} 次重试\033[0m")
                 time.sleep(1)
-        
+
         if is_valid and translation:
             # 处理特殊字符
             translation = process_special_chars(original_text, translation)
@@ -454,6 +465,36 @@ def handle_translation(text):
         return False
 
 
+def handle_translation(text):
+    """根据换行模式处理翻译请求"""
+    newline_mode = resolve_newline_mode()
+
+    if newline_mode == "keep":
+        return translate_text(text)
+
+    if newline_mode == "split_lines":
+        parts = re.split(r'(\r\n|\r|\n)', text)
+        translated_parts = []
+
+        for part in parts:
+            if part in {"\r\n", "\r", "\n"}:
+                translated_parts.append(part)
+            elif part:
+                translated = translate_text(part)
+                if translated is False:
+                    return False
+                translated_parts.append(translated)
+            else:
+                translated_parts.append(part)
+
+        return "".join(translated_parts)
+
+    escaped_text = text.replace("\n", "\\n")
+    translation = translate_text(escaped_text)
+    if isinstance(translation, str):
+        return translation.replace("\\n", "\n")
+    return translation
+
 # ==================== Flask 路由 ====================
 @app.route("/translate", methods=["GET"])
 def translate():
@@ -464,13 +505,9 @@ def translate():
 
     print(f"\033[36m[原文]\033[0m: \033[35m{text}\033[0m")
 
-    # 处理换行符
-    text = text.replace("\n", "\\n")
-
     translation = handle_translation(text)
 
     if isinstance(translation, str):
-        translation = translation.replace("\\n", "\n")
         return translation
     else:
         return "[翻译失败] " + text, 500
@@ -488,15 +525,18 @@ def index():
 
 # ==================== 启动服务 ====================
 def main():
+    newline_mode = resolve_newline_mode(show_warning=True)
+
     print("\033[32m" + "=" * 60 + "\033[0m")
     print(f"\033[32m  SakuraLLM 翻译服务启动中...\033[0m")
     print(f"\033[32m  地址: http://127.0.0.1:4000\033[0m")
     print(f"\033[32m  模型: {Model_Type}\033[0m")
+    print(f"\033[32m  换行模式: {newline_mode}\033[0m")
     print(f"\033[32m  参数: temperature={default_model_params['temperature']}, top_p={default_model_params['top_p']}\033[0m")
     print("\033[32m" + "=" * 60 + "\033[0m")
-    
+
     http_server = WSGIServer(("127.0.0.1", 4000), app, log=None, error_log=None)
-    
+
     try:
         http_server.serve_forever()
     except KeyboardInterrupt:
