@@ -26,6 +26,7 @@
 - **标点同步**：自动同步原文与译文的末尾标点（包括 `……` 和 `...`）
 - **短文本直通**：对主要由汉字、数字、符号组成的短文本直接返回原文，避免无意义重试
 - **Think 标签清理**：自动移除模型输出中的 `<think>` 标签内容
+- **换行处理模式**：支持 `escape`、`keep`、`split_lines` 三种换行处理策略
 
 ## 环境要求
 
@@ -54,6 +55,7 @@ Custom_Headers = {
 }
 Model_Type = "GalTransl-v4-4B-2601"  # 模型名称
 Request_Timeout = 20  # 请求超时时间（秒）
+Newline_Mode = "escape"  # 换行处理模式：escape / keep / split_lines
 
 # 模型参数
 default_model_params = {
@@ -70,7 +72,7 @@ default_model_params = {
 python SakuraLLM.py
 ```
 
-服务启动后，将在 `http://127.0.0.1:4000` 监听请求。
+> 服务启动后，将在 `http://127.0.0.1:4000` 监听请求。
 
 ## 使用方法
 
@@ -92,7 +94,21 @@ FallbackEndpoint=
 Url=http://127.0.0.1:4000/translate
 ```
 
+> 配置完成后，XUnity.AutoTranslator 会把待翻译文本通过 `GET /translate?text=...` 发送到本服务。
+
 ## 配置说明
+
+以下配置项均位于 `SakuraLLM.py` 顶部配置区域，可按需直接修改。
+
+### API 配置
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `Base_url` | 上游 SakuraLLM / 兼容 OpenAI API 服务地址 | `http://127.0.0.1:8080` |
+| `API_Key` | API 密钥；留空时不发送 `Authorization` 请求头 | `""` |
+| `Custom_Headers` | 额外请求头；其中 `reasoning_effort` 会自动转入请求体 | `{}` |
+| `Model_Type` | 请求时使用的模型名称 | `GalTransl-v4-4B-2601` |
+| `Request_Timeout` | 单次 API 请求超时时间（秒） | `20` |
 
 ### 模型参数
 
@@ -103,6 +119,17 @@ Url=http://127.0.0.1:4000/translate
 | `top_p` | 核采样参数 | 0.8 |
 | `frequency_penalty` | 频率惩罚，用于减少重复 | 0.0 |
 
+### 换行处理模式
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `Newline_Mode` | 换行处理方式：`escape` 将换行转义后整体翻译；`keep` 保留真实换行整体翻译；`split_lines` 按行分别翻译后再拼接 | `escape` |
+
+#### 模式选择建议
+- `escape`：兼容当前默认行为，适合先直接使用
+- `keep`：适合希望模型结合上下文整体处理多行文本的情况
+- `split_lines`：适合菜单、短句、分行明确的 UI 文本
+
 ### 翻译质量配置
 
 | 参数 | 说明 | 默认值 |
@@ -111,9 +138,19 @@ Url=http://127.0.0.1:4000/translate
 | `max_retries` | 最大重试次数 | 3 |
 | `Request_Timeout` | API 请求超时时间（秒） | 20 |
 
+### 内置行为说明
+
+以下行为当前由代码内置实现，无需额外配置：
+
+- 自动检测空翻译、原文回显、提示词回显、拒绝回复、译文含日文等异常结果
+- 自动清理模型输出中的 `<think>` 标签内容与部分训练数据残留
+- 对主要由汉字、数字、符号组成的极短文本直接返回原文
+- 自动同步「」引号与常见句末标点
+- 检测异常重复时自动调整 `temperature` 与 `frequency_penalty` 后重试
+
 ## 日志输出
 
-服务运行时会输出彩色日志：
+服务运行时会输出以下彩色日志：
 
 - 🔵 **[原文]**：收到的原始日文文本
 - 🟢 **[译文]**：成功翻译的结果
