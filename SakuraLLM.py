@@ -1,3 +1,6 @@
+from gevent import monkey
+monkey.patch_all()
+
 from flask import Flask, request, render_template_string
 from gevent.pywsgi import WSGIServer
 import os
