@@ -12,6 +12,7 @@ os.system("")
 # API配置
 Base_url = "http://127.0.0.1:8080"  # API 请求地址
 API_Key = ""  # API 密钥，需要鉴权时填写，留空则不发送 Authorization 请求头
+Listen_Port = 4000  # 本地服务监听端口
 Custom_Headers = {
     # "reasoning_effort": "low",
     # "X-Your-Header": "your-value",
@@ -47,7 +48,7 @@ apology_phrases = [
 # 检测系统提示词或翻译指令回显的关键短语
 prompt_echo_phrases = [
     "视觉小说翻译模型",
-    "流畅地将日文翻译成",
+    "通顺地将日文翻译成",
     "联系上下文正确使用人称代词",
     "不要混淆使役态和被动态",
     "不要擅自添加原文中没有的",
@@ -529,13 +530,13 @@ def main():
 
     print("\033[32m" + "=" * 60 + "\033[0m")
     print(f"\033[32m  SakuraLLM 翻译服务启动中...\033[0m")
-    print(f"\033[32m  地址: http://127.0.0.1:4000\033[0m")
+    print(f"\033[32m  地址: http://127.0.0.1:{Listen_Port}\033[0m")
     print(f"\033[32m  模型: {Model_Type}\033[0m")
     print(f"\033[32m  换行模式: {newline_mode}\033[0m")
     print(f"\033[32m  参数: temperature={default_model_params['temperature']}, top_p={default_model_params['top_p']}\033[0m")
     print("\033[32m" + "=" * 60 + "\033[0m")
 
-    http_server = WSGIServer(("127.0.0.1", 4000), app, log=None, error_log=None)
+    http_server = WSGIServer(("127.0.0.1", Listen_Port), app, log=None, error_log=None)
 
     try:
         http_server.serve_forever()
