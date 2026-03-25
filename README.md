@@ -173,7 +173,3 @@ Url=http://127.0.0.1:4000/translate
 - 感谢 [as176590811/XUnity.AutoTranslator-chatgpt](https://github.com/as176590811/XUnity.AutoTranslator-chatgpt) 的原始代码支持
 - 感谢 [SKIPPINGpetticoatconvent/XUnity.AutoTranslator-ollama](https://github.com/SKIPPINGpetticoatconvent/XUnity.AutoTranslator-ollama) 的代码修改
 - 感谢 [PiDanShouRouZhouXD/Sakura_Launcher_GUI](https://github.com/PiDanShouRouZhouXD/Sakura_Launcher_GUI) 提供的 Sakura 启动器
-
-## 许可证
-
-MIT License
