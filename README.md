@@ -1,89 +1,57 @@
-# SakuraLLM 翻译服务
+# SakuraLLM GUI
 
-[English Version](README_en.md)
+这是 `XUnity.AutoTranslator-SakuraLLM` 的 PySide6 图形界面版。
 
-## 简介
+## 当前功能
 
-这是一个基于 Flask 的游戏翻译桥接服务，用于将 XUnity.AutoTranslator 与 SakuraLLM（或兼容 OpenAI API 的翻译模型）连接起来，将游戏中的日语文本翻译成简体中文。
+- 图形化编辑配置
+- 保存到 `data/config.json`
+- 支持编辑自定义请求头 JSON
+- 支持导入/导出配置 JSON
+- 支持编辑系统提示词
+- 内置原版提示词预设
+- 启动/停止本地 Flask 翻译服务
+- 启动前检查本地监听端口是否被占用
+- 支持最小化到系统托盘
+- 查看彩色运行日志
+- 在 GUI 中测试 `/translate` 接口
+- 保持与 XUnity.AutoTranslator 的本地 HTTP 对接方式兼容
 
-该服务专为视觉小说/Galgame 翻译优化，支持智能翻译质量控制和自动重试机制。
+## 目录结构
 
-## 功能特性
+```text
+app.py
+sakura_llm/
+  config.py
+  logging_bridge.py
+  service.py
+  translator.py
+gui/
+  main_window.py
+data/
+requirements.txt
+```
 
-### 翻译质量控制
-- **智能验证**：自动检测翻译结果质量，识别空翻译、回显原文、包含日文等问题
-- **重复检测**：检测译文中的异常连续重复短语或字符，自动调整参数重试
-- **拟声词识别**：智能识别拟声词/情感表达文本，避免误判有意的重复模式
-- **垃圾内容清理**：自动清理模型输出中的训练数据残留
-
-### 自动重试机制
-- **动态参数调整**：根据翻译失败原因自动调整 temperature、frequency_penalty 等参数
-- **超时重试**：API 请求超时自动重试
-- **最大重试次数**：可配置的重试次数上限
-
-### 文本处理
-- **特殊字符处理**：自动处理「」引号，保持格式一致
-- **标点同步**：自动同步原文与译文的末尾标点（包括 `……` 和 `...`）
-- **短文本直通**：对主要由汉字、数字、符号组成的短文本直接返回原文，避免无意义重试
-- **Think 标签清理**：自动移除模型输出中的 `<think>` 标签内容
-- **换行处理模式**：支持 `escape`、`keep`、`split_lines` 三种换行处理策略
-
-## 环境要求
-
-- Python 3.7+
-- 运行中的 SakuraLLM 或兼容 OpenAI API 的翻译服务
-
-## 安装
-
-### 1. 安装依赖
+## 安装依赖
 
 ```bash
-pip install flask gevent requests
+python -m pip install -r requirements.txt
 ```
 
-### 2. 配置服务
-
-编辑 `SakuraLLM.py` 中的配置区域：
-
-```python
-# API配置
-Base_url = "http://127.0.0.1:8080"  # API 请求地址
-API_Key = ""  # API 密钥，需要鉴权时填写，留空则不发送 Authorization 请求头
-Custom_Headers = {
-    # "reasoning_effort": "low",  # 为了方便编辑可写在这里，发送时会自动转入请求体
-    # "X-Your-Header": "your-value",
-}
-Model_Type = "GalTransl-v4-4B-2601"  # 模型名称
-Request_Timeout = 20  # 请求超时时间（秒）
-Newline_Mode = "escape"  # 换行处理模式：escape / keep / split_lines
-
-# 模型参数
-default_model_params = {
-    "temperature": 0.3,  # v3推荐值
-    "max_tokens": 2048,
-    "top_p": 0.8,  # v3推荐值
-    "frequency_penalty": 0.0,
-}
-```
-
-### 3. 启动服务
+## 运行
 
 ```bash
-python SakuraLLM.py
+python app.py
 ```
 
-> 服务启动后，将在 `http://127.0.0.1:4000` 监听请求。
+## 使用方式
 
-## 使用方法
-
-### API 端点
-
-- **首页**：`GET /` - 显示服务状态
-- **翻译**：`GET /translate?text=你的文本` - 翻译指定文本
-
-### 配置 XUnity.AutoTranslator
-
-在 `AutoTranslatorConfig.ini` 中添加以下配置：
+1. 填写上游 API 地址、模型名、端口等配置。
+2. 如需附加请求头，在“自定义请求头(JSON)”中填写 JSON。
+3. 如需修改翻译风格，可直接编辑“系统提示词”，或先应用“sakura预设”。
+4. 点击“保存配置”。
+5. 点击“启动服务”。
+6. 在 XUnity.AutoTranslator 中配置：
 
 ```ini
 [Service]
@@ -94,82 +62,28 @@ FallbackEndpoint=
 Url=http://127.0.0.1:4000/translate
 ```
 
-> 配置完成后，XUnity.AutoTranslator 会把待翻译文本通过 `GET /translate?text=...` 发送到本服务。
+如果你改了监听端口，请同步修改这里的 URL。
 
-## 配置说明
+## 自定义请求头示例
 
-以下配置项均位于 `SakuraLLM.py` 顶部配置区域，可按需直接修改。
+```json
+{
+  "reasoning_effort": "low"
+}
+```
 
-### API 配置
+## 打包建议
 
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `Base_url` | 上游 SakuraLLM / 兼容 OpenAI API 服务地址 | `http://127.0.0.1:8080` |
-| `API_Key` | API 密钥；留空时不发送 `Authorization` 请求头 | `""` |
-| `Custom_Headers` | 额外请求头；其中 `reasoning_effort` 会自动转入请求体 | `{}` |
-| `Model_Type` | 请求时使用的模型名称 | `GalTransl-v4-4B-2601` |
-| `Request_Timeout` | 单次 API 请求超时时间（秒） | `20` |
+先使用 `onedir` 模式调试：
 
-### 模型参数
+```bash
+pyinstaller --noconfirm --windowed --onedir app.py
+```
 
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `temperature` | 控制输出随机性，值越低越稳定 | 0.3 |
-| `max_tokens` | 最大输出 token 数 | 2048 |
-| `top_p` | 核采样参数 | 0.8 |
-| `frequency_penalty` | 频率惩罚，用于减少重复 | 0.0 |
+稳定后再尝试 `--onefile`。
 
-### 换行处理模式
+## 说明
 
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `Newline_Mode` | 换行处理方式：`escape` 将换行转义后整体翻译；`keep` 保留真实换行整体翻译；`split_lines` 按行分别翻译后再拼接 | `escape` |
-
-#### 模式选择建议
-- `escape`：兼容当前默认行为，适合先直接使用
-- `keep`：适合希望模型结合上下文整体处理多行文本的情况
-- `split_lines`：适合菜单、短句、分行明确的 UI 文本
-
-### 翻译质量配置
-
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `repeat_count` | 触发连续重复检测的阈值 | 8 |
-| `max_retries` | 最大重试次数 | 3 |
-| `Request_Timeout` | API 请求超时时间（秒） | 20 |
-
-### 内置行为说明
-
-以下行为当前由代码内置实现，无需额外配置：
-
-- 自动检测空翻译、原文回显、提示词回显、拒绝回复、译文含日文等异常结果
-- 自动清理模型输出中的 `<think>` 标签内容与部分训练数据残留
-- 对主要由汉字、数字、符号组成的极短文本直接返回原文
-- 自动同步「」引号与常见句末标点
-- 检测异常重复时自动调整 `temperature` 与 `frequency_penalty` 后重试
-
-## 日志输出
-
-服务运行时会输出以下彩色日志：
-
-- 🔵 **[原文]**：收到的原始日文文本
-- 🟢 **[译文]**：成功翻译的结果
-- 🟡 **[WARN]**：翻译质量警告（重复、包含日文等）
-- 🔴 **[ERROR]**：翻译失败或 API 错误
-
-## 注意事项
-
-1. 确保 SakuraLLM 或兼容的翻译 API 服务已启动
-2. 检查 `Base_url` 配置是否正确指向你的模型服务地址
-3. 如遇到翻译质量问题，可尝试调整 `temperature` 和 `top_p` 参数
-4. 建议使用 SakuraLLM v3 或更新版本的模型
-5. 对于纯汉字或以汉字为主的极短文本，服务可能直接返回原文，这是预期行为
-6. 经测试，笔记本 RTX 4070 在 GalTransl-v4-4B-2601 模型上速度很快，可实现实时翻译（RTX 4060/4060 Ti 同级别显卡预计也有类似表现）
-
-## 致谢
-
-- 感谢 [SakuraLLM](https://github.com/SakuraLLM/Sakura-13B-Galgame) 项目提供的翻译模型
-- 感谢 [XUnity.AutoTranslator](https://github.com/bbepis/XUnity.AutoTranslator) 提供的游戏翻译框架
-- 感谢 [as176590811/XUnity.AutoTranslator-chatgpt](https://github.com/as176590811/XUnity.AutoTranslator-chatgpt) 的原始代码支持
-- 感谢 [SKIPPINGpetticoatconvent/XUnity.AutoTranslator-ollama](https://github.com/SKIPPINGpetticoatconvent/XUnity.AutoTranslator-ollama) 的代码修改
-- 感谢 [PiDanShouRouZhouXD/Sakura_Launcher_GUI](https://github.com/PiDanShouRouZhouXD/Sakura_Launcher_GUI) 提供的 Sakura 启动器
+当前版本仍是增强中的本地版：
+- 暂未加入图标和安装包
+- 暂未加入自动更新
