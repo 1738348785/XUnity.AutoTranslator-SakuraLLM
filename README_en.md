@@ -8,6 +8,13 @@ A Flask-based game translation bridge service that connects XUnity.AutoTranslato
 
 This service is optimized for visual novel/Galgame translation, featuring intelligent translation quality control and automatic retry mechanisms.
 
+## GUI Version (Recommended)
+
+A version with a graphical user interface is now available for users who prefer not to use the command line:
+
+- **GUI Branch**: [gui-main](https://github.com/1738348785/XUnity.AutoTranslator-SakuraLLM/tree/gui-main)
+- **Latest Release**: [GUI v1.0.0 Releases](https://github.com/1738348785/XUnity.AutoTranslator-SakuraLLM/releases/tag/gui-v1.0.0)
+
 ## Features
 
 ### Translation Quality Control

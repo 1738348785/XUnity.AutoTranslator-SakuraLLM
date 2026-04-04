@@ -8,6 +8,13 @@
 
 该服务专为视觉小说/Galgame 翻译优化，支持智能翻译质量控制和自动重试机制。
 
+## GUI 版本 (推荐)
+
+本项目现已提供带有图形界面的版本，方便不熟悉命令行的用户进行配置和运行：
+
+- **GUI 分支**: [gui-main](https://github.com/1738348785/XUnity.AutoTranslator-SakuraLLM/tree/gui-main)
+- **最新发布**: [GUI v1.0.0 Releases](https://github.com/1738348785/XUnity.AutoTranslator-SakuraLLM/releases/tag/gui-v1.0.0)
+
 ## 功能特性
 
 ### 翻译质量控制
