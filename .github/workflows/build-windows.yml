@@ -41,9 +41,6 @@ jobs:
             --exclude-module unittest `
             --exclude-module pydoc `
             --exclude-module pydoc_data `
-            --exclude-module inspect `
-            --exclude-module email `
-            --exclude-module http `
             --exclude-module test `
             app.py
 
