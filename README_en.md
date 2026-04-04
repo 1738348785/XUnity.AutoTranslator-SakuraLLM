@@ -15,6 +15,10 @@ A version with a graphical user interface is now available for users who prefer 
 - **GUI Branch**: [gui-main](https://github.com/1738348785/XUnity.AutoTranslator-SakuraLLM/tree/gui-main)
 - **Latest Release**: [GUI v1.0.0 Releases](https://github.com/1738348785/XUnity.AutoTranslator-SakuraLLM/releases/tag/gui-v1.0.0)
 
+![GUI Screenshot](https://raw.githubusercontent.com/1738348785/XUnity.AutoTranslator-SakuraLLM/gui-main/%E9%A1%B5%E9%9D%A2%E6%88%AA%E5%9B%BE.png)
+
+
+
 ## Features
 
 ### Translation Quality Control
