@@ -34,12 +34,23 @@ jobs:
       - name: Build executable
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean --windowed --onefile --name "XUnity.AutoTranslator-SakuraLLM GUI" --add-data "data;data" app.py
+          pyinstaller --noconfirm --clean --windowed --onefile `
+            --name "XUnity.AutoTranslator-SakuraLLM GUI" `
+            --add-data "data;data" `
+            --exclude-module tkinter `
+            --exclude-module unittest `
+            --exclude-module pydoc `
+            --exclude-module pydoc_data `
+            --exclude-module inspect `
+            --exclude-module email `
+            --exclude-module http `
+            --exclude-module test `
+            app.py
 
       - name: Create zip package
         shell: pwsh
         run: |
-          Compress-Archive -Path "dist/XUnity.AutoTranslator-SakuraLLM GUI.exe" -DestinationPath "dist/XUnity.AutoTranslator-SakuraLLM GUI-windows.zip" -Force
+          Compress-Archive -Path "app.py", "gui", "sakura_llm", "data", "requirements.txt", "README.md" -DestinationPath "dist/XUnity.AutoTranslator-SakuraLLM GUI-windows.zip" -Force
 
       - name: Upload exe artifact
         uses: actions/upload-artifact@v4

@@ -1,0 +1,12 @@
+# Exclude files from GitHub's automatic source code ZIP
+.github/ export-ignore
+页面截图.png export-ignore
+.gitignore export-ignore
+.gitattributes export-ignore
+
+# Build and cache files
+dist/ export-ignore
+build/ export-ignore
+*.spec export-ignore
+__pycache__/ export-ignore
+*.pyc export-ignore
