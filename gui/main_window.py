@@ -1323,9 +1323,14 @@ class MainWindow(QMainWindow):
             color: #e4e4ea;
             background-color: #25252b;
         }
-        QMessageBox QLabel, QInputDialog QLabel {
+        QMessageBox QLabel {
             color: #dddde6;
-            min-width: 320px;
+            min-width: 0;
+            max-width: 220px;
+        }
+        QInputDialog QLabel {
+            color: #dddde6;
+            min-width: 0;
         }
         QMessageBox QPushButton, QInputDialog QPushButton {
             background-color: #33333a;
@@ -1354,7 +1359,12 @@ class MainWindow(QMainWindow):
         if isinstance(dialog, QInputDialog):
             dialog.setOkButtonText(self._t("dialog_ok"))
             dialog.setCancelButtonText(self._t("dialog_cancel"))
+            dialog.adjustSize()
             return
+
+        for label in dialog.findChildren(QLabel):
+            label.setWordWrap(True)
+        dialog.adjustSize()
 
         button_text_map = {
             QMessageBox.StandardButton.Ok: self._t("dialog_ok"),
