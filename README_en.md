@@ -12,6 +12,7 @@ This service is optimized for visual novel/Galgame translation, featuring intell
 
 A version with a graphical user interface is now available for users who prefer not to use the command line:
 
+- **GUI Documentation**: [README (English)](https://github.com/1738348785/XUnity.AutoTranslator-SakuraLLM/blob/gui-main/README.en.md)
 - **GUI Branch**: [gui-main](https://github.com/1738348785/XUnity.AutoTranslator-SakuraLLM/tree/gui-main)
 - **Latest Release**: [Releases](https://github.com/1738348785/XUnity.AutoTranslator-SakuraLLM/releases)
 
