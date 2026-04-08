@@ -29,7 +29,24 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyinstaller
+          pip install pyinstaller pillow
+
+      - name: Prepare app icon
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          from PIL import Image
+
+          src = Path("assets/app.png")
+          dst = Path("build-assets/app.ico")
+          dst.parent.mkdir(parents=True, exist_ok=True)
+
+          with Image.open(src) as image:
+              image.save(dst, sizes=[(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)])
+
+          print(f"Prepared icon: {dst}")
+          '@ | python -
 
       - name: Build executable
         shell: pwsh
@@ -37,6 +54,8 @@ jobs:
           pyinstaller --noconfirm --clean --windowed --onefile `
             --name "XUnity.AutoTranslator-SakuraLLM GUI" `
             --add-data "data;data" `
+            --add-data "assets;assets" `
+            --icon "build-assets/app.ico" `
             --exclude-module tkinter `
             --exclude-module unittest `
             --exclude-module pydoc `
@@ -47,7 +66,7 @@ jobs:
       - name: Create zip package
         shell: pwsh
         run: |
-          Compress-Archive -Path "app.py", "gui", "sakura_llm", "data", "requirements.txt", "README.md" -DestinationPath "dist/XUnity.AutoTranslator-SakuraLLM GUI-windows.zip" -Force
+          Compress-Archive -Path "app.py", "gui", "sakura_llm", "data", "assets", "requirements.txt", "README.md" -DestinationPath "dist/XUnity.AutoTranslator-SakuraLLM GUI-windows.zip" -Force
 
       - name: Upload exe artifact
         uses: actions/upload-artifact@v4

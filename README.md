@@ -1,5 +1,7 @@
 # XUnity.AutoTranslator-SakuraLLM GUI
 
+[English](https://github.com/1738348785/XUnity.AutoTranslator-SakuraLLM/blob/gui-main/README.en.md)
+
 这是 `XUnity.AutoTranslator-SakuraLLM` 的图形界面版本。
 GUI 版本，它可以直接在窗口里完成配置、启动、测试和看日志，适合日常本地使用。
 

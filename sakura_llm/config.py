@@ -27,6 +27,8 @@ class AppConfig:
     top_p: float = 0.8
     frequency_penalty: float = 0.0
     system_prompt: str = DEFAULT_SYSTEM_PROMPT
+    prompt_presets: dict = field(default_factory=dict)
+    ui_language: str = "auto"
 
     @property
     def translate_url(self) -> str:
@@ -43,6 +45,16 @@ class AppConfig:
             values["custom_headers"] = {}
         if not isinstance(values.get("system_prompt"), str) or not values.get("system_prompt", "").strip():
             values["system_prompt"] = DEFAULT_SYSTEM_PROMPT
+        if not isinstance(values.get("prompt_presets"), dict):
+            values["prompt_presets"] = {}
+        else:
+            values["prompt_presets"] = {
+                str(k): str(v)
+                for k, v in values["prompt_presets"].items()
+                if str(k).strip() and str(v).strip()
+            }
+        if values.get("ui_language") not in {"auto", "zh_CN", "en"}:
+            values["ui_language"] = "auto"
         return cls(**values)
 
 
@@ -60,7 +72,6 @@ class ConfigStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("w", encoding="utf-8") as f:
             json.dump(config.to_dict(), f, ensure_ascii=False, indent=2)
-
 
 def get_default_config_path() -> Path:
     if getattr(sys, "frozen", False):

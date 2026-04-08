@@ -10,6 +10,8 @@ from gui.main_window import MainWindow
 def main():
     app = QApplication(sys.argv)
     window = MainWindow()
+    if not window.windowIcon().isNull():
+        app.setWindowIcon(window.windowIcon())
     window.show()
     sys.exit(app.exec())
 
