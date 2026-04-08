@@ -13,7 +13,7 @@
 本项目现已提供带有图形界面的版本，方便不熟悉命令行的用户进行配置和运行：
 
 - **GUI 分支**: [gui-main](https://github.com/1738348785/XUnity.AutoTranslator-SakuraLLM/tree/gui-main)
-- **最新发布**: [GUI v1.0.0 Releases](https://github.com/1738348785/XUnity.AutoTranslator-SakuraLLM/releases/tag/gui-v1.0.0)
+- **最新发布**: [Releases](https://github.com/1738348785/XUnity.AutoTranslator-SakuraLLM/releases)
 
 ![GUI 截图](https://raw.githubusercontent.com/1738348785/XUnity.AutoTranslator-SakuraLLM/gui-main/%E9%A1%B5%E9%9D%A2%E6%88%AA%E5%9B%BE.png)
 
