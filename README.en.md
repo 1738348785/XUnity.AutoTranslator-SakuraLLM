@@ -1,77 +1,49 @@
 # XUnity.AutoTranslator-SakuraLLM GUI
 
-[简体中文](https://github.com/1738348785/XUnity.AutoTranslator-SakuraLLM/blob/gui-main/README.md)
+[简体中文](https://github.com/1738348785/XUnity.AutoTranslator-SakuraLLM/blob/gui-main/README.md) · English
 
-This is the GUI edition of `XUnity.AutoTranslator-SakuraLLM`.
+The GUI edition of `XUnity.AutoTranslator-SakuraLLM`. Configure, launch, test, and inspect logs — all from a desktop window.
 
-The GUI version lets you configure, start, test, and inspect logs directly from a desktop window, which is more convenient for everyday local use.
+![Screenshot](页面截图.png)
 
-## What This Version Can Do
+## Features
 
-- Fill in connection settings such as API endpoint, model name, and local port directly in the GUI
-- Adjust common request parameters
-- Edit the system prompt
-- Use prompt presets
-- Edit custom request headers in JSON format
-- Adjust `reasoning_effort`
-- Save / import / export configuration
-- Start / stop the local translation service
-- Test translation directly in the GUI
-- View runtime logs
-- Minimize to the system tray
+- 🖥️ **Fully graphical setup** — API endpoint, model, port, headers, prompt, all configurable in the UI
+- ⚡ **True concurrent translation** — gevent coroutines + tunable concurrency cap; no more line-by-line subtitle lag on scene changes
+- 💾 **LRU translation cache** — repeated text (menus, system prompts) hits in milliseconds, saves GPU compute
+- 🔀 **In-flight deduplication** — multiple simultaneous identical requests share a single model call
+- 🩺 **Backend health check** — on service start, connectivity is verified and surfaced in logs immediately
+- 🎛️ **Live parameter updates** — change `max_concurrency` without restarting the service
+- 💬 **Prompt presets** — switch translation styles with one click
+- 🌐 **Bilingual UI (EN / zh-CN)** + system tray minimization
 
-## Who This Is For
+## Quick Start
 
-This version is more convenient if you:
+### Option 1: Download the exe (recommended)
 
-- do not want to edit Python files manually
-- do not want to start the tool from the command line every time
-- want a more visual way to change settings
-- want to verify translation locally first
-- prefer a desktop-tool workflow
+Grab the latest `XUnity.AutoTranslator-SakuraLLM GUI.exe` from the [Releases](https://github.com/1738348785/XUnity.AutoTranslator-SakuraLLM/releases) page and double-click.
 
-## Requirements
-
-Prepare the following before use:
-
-- Python runtime environment, preferably 3.10 or newer
-- A working SakuraLLM endpoint or another upstream endpoint compatible with the OpenAI API
-- Windows system environment, which is the primary target platform for this GUI build
-
-## Install Dependencies
-
-Run this in the project directory:
+### Option 2: Run from source
 
 ```bash
-python -m pip install -r requirements.txt
-```
-
-## Start the App
-
-```bash
+pip install -r requirements.txt
 python app.py
 ```
 
-After startup, the graphical interface will open.
+> Python 3.10+ required. Windows recommended.
 
-## Basic Usage
+## Setup Flow
 
-A typical flow looks like this:
+1. Fill in **Base URL** (SakuraLLM or any OpenAI-compatible endpoint, e.g. `http://127.0.0.1:8080`)
+2. Fill in the **model name**
+3. Set the **local listening port** (default 4000)
+4. Tune temperature, Top-P, max concurrency as needed
+5. Click **Save Config** → **Start Service**
+6. Go to the **Translation Test** page to verify output
 
-1. Fill in the upstream endpoint in `Base URL`
-2. Fill in the model name
-3. Set the local listening port
-4. Adjust timeout, temperature, `top_p`, and other parameters as needed
-5. If extra headers are required, fill them in as JSON in the custom headers section
-6. Set `reasoning_effort` if needed
-7. Edit the prompt or apply a preset directly
-8. Click `Save Config`
-9. Click `Start Service`
-10. Open the `Translation Test` page and verify that requests return normal results
+## Connecting with XUnity.AutoTranslator
 
-## How To Connect With XUnity.AutoTranslator
-
-Set `AutoTranslatorConfig.ini` like this:
+Edit `AutoTranslatorConfig.ini`:
 
 ```ini
 [Service]
@@ -82,11 +54,22 @@ FallbackEndpoint=
 Url=http://127.0.0.1:4000/translate
 ```
 
-If you change the local listening port in the GUI, update the address here as well.
+If you change the local port, update the `Url` here too.
 
-## Custom Header Example
+## Key Parameters
 
-If your upstream endpoint requires extra parameters, you can write them like this:
+| Parameter | Description | Recommended |
+|---|---|---|
+| `temperature` | Sampling temperature; lower = more stable | `0.1 - 0.5` |
+| `top_p` | Nucleus sampling threshold | `0.8` |
+| `max_tokens` | Per-response generation cap | `2048` |
+| `max_concurrency` | Max parallel requests (**live-tunable**) | `2 - 8`, depends on backend |
+| `max_retries` | Retries when validation fails | `3` |
+| `repeat_count` | Repetition detection threshold | `8` |
+
+## Custom Headers
+
+For upstream parameters like DeepSeek-R1's `reasoning_effort`, set it dedicatedly in the config page, or inject via custom header JSON:
 
 ```json
 {
@@ -94,21 +77,28 @@ If your upstream endpoint requires extra parameters, you can write them like thi
 }
 ```
 
-If you already set `reasoning_effort` separately in the GUI, you usually do not need to repeat it here.
+The custom header takes precedence if both are set.
 
-## Where The Configuration Is Saved
+## Config File Location
 
-By default, the application saves its configuration to:
+- **From source**: `data/config.json` in the project directory
+- **Packaged exe**: `data/config.json` next to the `.exe`
 
-```text
-data/config.json
-```
+Writes are atomic (temp file + replace), so crashes won't corrupt the config.
 
-If you are using the packaged `.exe`, it will also prefer reading and writing `data/config.json` in the application directory.
+## Troubleshooting
 
-## Branch Notes
+**Translation fails / slow?**
+- Bump `max_concurrency` to 4-8 in the config page
+- Confirm the backend (llama.cpp / KoboldCpp / etc.) is running — after service start, logs will show "Backend is reachable" or "Backend unreachable"
 
-The repository is currently organized like this:
+**Port in use?**
+- Pick a different port or close the program holding it. The error is surfaced in the log panel immediately.
 
-- `main`: original mainline branch
-- `gui-main`: GUI branch
+**Packaged exe startup slow?**
+- First launch unpacks to a temp directory; subsequent launches are faster.
+
+## Branches
+
+- `main`: upstream mainline
+- `gui-main`: GUI edition (this branch)
