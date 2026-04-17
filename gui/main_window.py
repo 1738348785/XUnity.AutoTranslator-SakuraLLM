@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -2017,6 +2018,15 @@ class MainWindow(QMainWindow):
             self.tray_icon.showMessage("SakuraLLM GUI", self._t("minimized_to_tray"), QSystemTrayIcon.MessageIcon.Information, 2000)
             return
         self.stop_service()
+        if self.service_thread is not None:
+            self.service_thread.wait(2000)
+        for attr in ("_test_thread", "_health_thread"):
+            t = getattr(self, attr, None)
+            if t is not None and t.isRunning():
+                t.wait(1000)
         if self.tray_icon is not None:
             self.tray_icon.hide()
+            self.tray_icon.deleteLater()
+            self.tray_icon = None
         super().closeEvent(event)
+        os._exit(0)

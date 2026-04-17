@@ -1,3 +1,4 @@
+import os
 import sys
 from gevent import monkey
 monkey.patch_all()
@@ -19,7 +20,8 @@ def main():
     if not window.windowIcon().isNull():
         app.setWindowIcon(window.windowIcon())
     window.show()
-    sys.exit(app.exec())
+    exit_code = app.exec()
+    os._exit(exit_code)
 
 
 if __name__ == "__main__":
