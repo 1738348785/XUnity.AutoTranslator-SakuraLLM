@@ -1,11 +1,53 @@
 import re
 import time
+import random
 import requests
 from collections import OrderedDict
+from requests.adapters import HTTPAdapter
 from gevent.lock import BoundedSemaphore
+from gevent.event import AsyncResult, Event
 
 from .config import AppConfig
 from .logging_bridge import LoggerBridge
+
+
+class AdjustableSemaphore:
+    """Permit-based semaphore whose capacity can be changed at runtime.
+    Shrinking does not interrupt in-flight holders; capacity tightens as permits are released.
+    Cross-thread safe: set_capacity may be called from any OS thread; acquire/release must run in the
+    gevent hub thread that owns the Event."""
+
+    def __init__(self, capacity: int):
+        self._target = max(1, int(capacity))
+        self._active = 0
+        self._event = Event()
+        self._event.set()
+
+    def set_capacity(self, capacity: int) -> None:
+        self._target = max(1, int(capacity))
+        self._event.set()
+
+    def acquire(self) -> None:
+        while True:
+            self._event.wait()
+            if self._active < self._target:
+                self._active += 1
+                if self._active >= self._target:
+                    self._event.clear()
+                return
+            self._event.clear()
+
+    def release(self) -> None:
+        self._active -= 1
+        if self._active < self._target:
+            self._event.set()
+
+    def __enter__(self):
+        self.acquire()
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.release()
 
 
 APOLOGY_PHRASES = [
@@ -42,9 +84,19 @@ class Translator:
         self.config = config
         self.logger = logger
         self.session = requests.Session()
+        pool_size = max(10, int(getattr(config, "max_concurrency", 2) or 2) * 2)
+        adapter = HTTPAdapter(pool_connections=pool_size, pool_maxsize=pool_size)
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
         self._cache = OrderedDict()
         self._cache_lock = BoundedSemaphore(1)
-        self._cache_hits = 0
+        self._inflight = {}
+        self._inflight_lock = BoundedSemaphore(1)
+        concurrency = max(1, int(getattr(config, "max_concurrency", 2) or 1))
+        self._model_semaphore = AdjustableSemaphore(concurrency)
+
+    def set_max_concurrency(self, n: int) -> None:
+        self._model_semaphore.set_capacity(n)
 
     def close(self):
         self.session.close()
@@ -159,22 +211,20 @@ class Translator:
             if run_length >= threshold:
                 return True
         exclude_patterns = {"……", "...", "~~", "♥♥", "！！", "??", "——", "――", "--"}
-        max_size = min(len(text) // count, 8)
+        n = len(text)
+        max_size = min(n // count, 8)
         for size in range(2, max_size + 1):
-            for i in range(len(text) - size * count + 1):
-                substring = text[i:i + size]
-                if substring in exclude_patterns:
-                    continue
-                if all(c in exclude_chars for c in substring):
-                    continue
-                repeated = True
-                for j in range(1, count):
-                    start = i + j * size
-                    if text[start:start + size] != substring:
-                        repeated = False
-                        break
-                if repeated:
+            block_len = size * count
+            limit = n - block_len + 1
+            i = 0
+            while i < limit:
+                unit = text[i:i + size]
+                if text[i:i + block_len] == unit * count:
+                    if unit in exclude_patterns or all(c in exclude_chars for c in unit):
+                        i += size
+                        continue
                     return True
+                i += 1
         return False
 
     def process_special_chars(self, original_text, translated_text):
@@ -222,12 +272,13 @@ class Translator:
             request_data["reasoning_effort"] = reasoning_effort
         if self.config.api_key:
             headers["Authorization"] = f"Bearer {self.config.api_key}"
-        response = self.session.post(
-            f"{self.config.base_url}/v1/chat/completions",
-            json=request_data,
-            headers=headers,
-            timeout=self.config.request_timeout,
-        )
+        with self._model_semaphore:
+            response = self.session.post(
+                f"{self.config.base_url}/v1/chat/completions",
+                json=request_data,
+                headers=headers,
+                timeout=self.config.request_timeout,
+            )
         response.raise_for_status()
         response_json = response.json()
         if "choices" in response_json:
@@ -310,6 +361,12 @@ class Translator:
         if text.startswith("「") and text.endswith("」"):
             text = text[1:-1]
         try:
+            max_input_chars = max(self.config.max_tokens * 2, 512)
+            if len(text) > max_input_chars:
+                self.logger.warn(
+                    f"文本过长 ({len(text)} 字符，上限 {max_input_chars})，跳过翻译以避免必然超时"
+                )
+                return False
             if self.is_mostly_kanji_or_simple(text) and len(text) <= 10:
                 self.logger.info(f"[译文] {original_text} (短文本且主要为汉字/符号，跳过翻译)")
                 return original_text
@@ -359,11 +416,11 @@ class Translator:
                 except requests.exceptions.Timeout:
                     retries += 1
                     self.logger.error(f"API请求超时，第 {retries}/{self.config.max_retries} 次重试")
-                    time.sleep(1)
+                    time.sleep(min(2 ** retries, 8) + random.random() * 0.5)
                 except requests.exceptions.RequestException as e:
                     retries += 1
                     self.logger.error(f"API请求失败: {e}，第 {retries}/{self.config.max_retries} 次重试")
-                    time.sleep(1)
+                    time.sleep(min(2 ** retries, 8) + random.random() * 0.5)
             if is_valid and translation:
                 translation = self.process_special_chars(original_text, translation)
                 self.logger.info(f"[译文] {translation}")
@@ -384,13 +441,35 @@ class Translator:
         cache_key = (newline_mode, text)
         cached = self._cache_get(cache_key)
         if cached is not None:
-            self._cache_hits += 1
             self.logger.info(f"[缓存命中] {text} -> {cached}")
             return cached
-        result = self._handle_translation_uncached(text, newline_mode)
-        if isinstance(result, str):
-            self._cache_put(cache_key, result)
-        return result
+
+        with self._inflight_lock:
+            existing = self._inflight.get(cache_key)
+            if existing is not None:
+                self.logger.info(f"[并发合并] 等待同文本进行中的翻译: {text}")
+                waiter = existing
+                owner = False
+            else:
+                waiter = AsyncResult()
+                self._inflight[cache_key] = waiter
+                owner = True
+
+        if not owner:
+            return waiter.get()
+
+        try:
+            result = self._handle_translation_uncached(text, newline_mode)
+            if isinstance(result, str):
+                self._cache_put(cache_key, result)
+            waiter.set(result)
+            return result
+        except BaseException as e:
+            waiter.set_exception(e)
+            raise
+        finally:
+            with self._inflight_lock:
+                self._inflight.pop(cache_key, None)
 
     def _handle_translation_uncached(self, text, newline_mode):
         if newline_mode == "keep":

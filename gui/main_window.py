@@ -90,6 +90,9 @@ UI_TEXT = {
         "reasoning_effort": "深度思考",
         "upstream_url": "上游地址",
         "request_timeout": "请求超时",
+        "stop_force_terminated": "服务线程在 3 秒内未能正常停止，强制终止",
+        "backend_reachable": "后端连通正常: {url}",
+        "backend_unreachable": "后端不可达 ({url}): {msg}，翻译请求将会失败",
         "param_temperature": "温度 (temperature)",
         "param_top_p": "Top-P 采样 (top_p)",
         "param_max_tokens": "最大生成长度 (max_tokens)",
@@ -215,6 +218,9 @@ UI_TEXT = {
         "reasoning_effort": "Reasoning Effort",
         "upstream_url": "Upstream URL",
         "request_timeout": "Request Timeout",
+        "stop_force_terminated": "Service thread did not stop within 3 seconds; forcing terminate.",
+        "backend_reachable": "Backend is reachable: {url}",
+        "backend_unreachable": "Backend unreachable ({url}): {msg}. Translation requests will fail.",
         "param_temperature": "Temperature",
         "param_top_p": "Top-P Sampling",
         "param_max_tokens": "Max Tokens",
@@ -378,6 +384,10 @@ class ServiceThread(QThread):
     def stop_service(self):
         if self.service:
             self.service.stop()
+
+    def apply_runtime_config(self, config: AppConfig) -> None:
+        if self.service is not None:
+            self.service.apply_runtime_config(config)
 
 
 class TestTranslationThread(QThread):
@@ -1851,6 +1861,7 @@ class MainWindow(QMainWindow):
         self.config = config
         self.config_store.save(config)
         if self._is_service_running():
+            self.service_thread.apply_runtime_config(config)
             self._set_running_state()
         else:
             self._set_idle_state()
@@ -1928,7 +1939,7 @@ class MainWindow(QMainWindow):
         self._set_stopping_state()
         self.service_thread.stop_service()
         if not self.service_thread.wait(3000):
-            self.append_log("WARN", "服务线程在 3 秒内未能正常停止，强制终止")
+            self.append_log("WARN", self._t("stop_force_terminated"))
             self.service_thread.terminate()
             self.service_thread.wait(1000)
 
@@ -1975,10 +1986,10 @@ class MainWindow(QMainWindow):
             return
         self._health_thread = HealthCheckThread(self.config.base_url, timeout=5)
         self._health_thread.ok.connect(
-            lambda: self.append_log("INFO", f"后端连通正常: {self.config.base_url}")
+            lambda: self.append_log("INFO", self._t("backend_reachable", url=self.config.base_url))
         )
         self._health_thread.failed.connect(
-            lambda msg: self.append_log("WARN", f"后端不可达 ({self.config.base_url}): {msg}，翻译请求将会失败")
+            lambda msg: self.append_log("WARN", self._t("backend_unreachable", url=self.config.base_url, msg=msg))
         )
         self._health_thread.finished.connect(self._on_health_finished)
         self._health_thread.start()
