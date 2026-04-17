@@ -51,17 +51,7 @@ jobs:
       - name: Build executable
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean --windowed --onefile `
-            --name "XUnity.AutoTranslator-SakuraLLM GUI" `
-            --add-data "data;data" `
-            --add-data "assets;assets" `
-            --icon "build-assets/app.ico" `
-            --exclude-module tkinter `
-            --exclude-module unittest `
-            --exclude-module pydoc `
-            --exclude-module pydoc_data `
-            --exclude-module test `
-            app.py
+          pyinstaller --noconfirm --clean "XUnity.AutoTranslator-SakuraLLM GUI.spec"
 
       - name: Create zip package
         shell: pwsh
