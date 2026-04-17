@@ -1,7 +1,9 @@
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 import json
+import os
 import sys
+import tempfile
 
 
 DEFAULT_SYSTEM_PROMPT = """你是一个视觉小说翻译模型，可以通顺地使用给定的术语表以指定的风格将日文翻译成简体中文，并联系上下文正确使用人称代词，注意不要混淆使役态和被动态的主语和宾语，不要擅自添加原文中没有的特殊符号，也不要擅自增加或减少换行。"""
@@ -19,6 +21,7 @@ class AppConfig:
     custom_headers: dict = field(default_factory=dict)
     model_type: str = "GalTransl-v4-4B-2601"
     request_timeout: int = 20
+    max_concurrency: int = 2
     newline_mode: str = "escape"
     repeat_count: int = 8
     max_retries: int = 3
@@ -70,8 +73,23 @@ class ConfigStore:
 
     def save(self, config: AppConfig) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("w", encoding="utf-8") as f:
-            json.dump(config.to_dict(), f, ensure_ascii=False, indent=2)
+        fd, tmp_path = tempfile.mkstemp(
+            prefix=self.path.name + ".",
+            suffix=".tmp",
+            dir=str(self.path.parent),
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(config.to_dict(), f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, self.path)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
 def get_default_config_path() -> Path:
     if getattr(sys, "frozen", False):

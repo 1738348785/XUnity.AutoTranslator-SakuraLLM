@@ -1,6 +1,8 @@
 import re
 import time
 import requests
+from collections import OrderedDict
+from gevent.lock import BoundedSemaphore
 
 from .config import AppConfig
 from .logging_bridge import LoggerBridge
@@ -34,9 +36,33 @@ GARBAGE_PATTERNS = [
 
 
 class Translator:
+    CACHE_SIZE = 5000
+
     def __init__(self, config: AppConfig, logger: LoggerBridge):
         self.config = config
         self.logger = logger
+        self.session = requests.Session()
+        self._cache = OrderedDict()
+        self._cache_lock = BoundedSemaphore(1)
+        self._cache_hits = 0
+
+    def close(self):
+        self.session.close()
+
+    def _cache_get(self, key):
+        with self._cache_lock:
+            if key in self._cache:
+                self._cache.move_to_end(key)
+                return self._cache[key]
+            return None
+
+    def _cache_put(self, key, value):
+        with self._cache_lock:
+            if key in self._cache:
+                self._cache.move_to_end(key)
+            self._cache[key] = value
+            while len(self._cache) > self.CACHE_SIZE:
+                self._cache.popitem(last=False)
 
     def strip_kaomoji_for_detection(self, text):
         if not text:
@@ -196,7 +222,7 @@ class Translator:
             request_data["reasoning_effort"] = reasoning_effort
         if self.config.api_key:
             headers["Authorization"] = f"Bearer {self.config.api_key}"
-        response = requests.post(
+        response = self.session.post(
             f"{self.config.base_url}/v1/chat/completions",
             json=request_data,
             headers=headers,
@@ -355,6 +381,18 @@ class Translator:
 
     def handle_translation(self, text):
         newline_mode = self.resolve_newline_mode()
+        cache_key = (newline_mode, text)
+        cached = self._cache_get(cache_key)
+        if cached is not None:
+            self._cache_hits += 1
+            self.logger.info(f"[缓存命中] {text} -> {cached}")
+            return cached
+        result = self._handle_translation_uncached(text, newline_mode)
+        if isinstance(result, str):
+            self._cache_put(cache_key, result)
+        return result
+
+    def _handle_translation_uncached(self, text, newline_mode):
         if newline_mode == "keep":
             return self.translate_text(text)
         if newline_mode == "split_lines":

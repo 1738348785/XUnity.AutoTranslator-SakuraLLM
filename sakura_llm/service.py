@@ -1,5 +1,7 @@
 from flask import Flask, request, render_template_string
 from gevent.pywsgi import WSGIServer
+from gevent.lock import BoundedSemaphore
+import logging
 
 from .config import AppConfig
 from .logging_bridge import LoggerBridge
@@ -12,7 +14,11 @@ class TranslationService:
         self.logger = logger
         self.translator = Translator(config, logger)
         self.app = Flask(__name__)
+        self.app.logger.setLevel(logging.ERROR)
+        logging.getLogger("werkzeug").setLevel(logging.ERROR)
         self.server = None
+        concurrency = max(1, int(getattr(config, "max_concurrency", 2) or 1))
+        self._semaphore = BoundedSemaphore(concurrency)
         self._register_routes()
 
     def _register_routes(self):
@@ -22,7 +28,8 @@ class TranslationService:
             if not text:
                 return "缺少text参数", 400
             self.logger.info(f"[原文] {text}")
-            translation = self.translator.handle_translation(text)
+            with self._semaphore:
+                translation = self.translator.handle_translation(text)
             if isinstance(translation, str):
                 return translation
             return "[翻译失败] " + text, 500
@@ -68,3 +75,4 @@ class TranslationService:
             self.server.stop(timeout=1)
             self.logger.info("服务器已停止")
             self.server = None
+        self.translator.close()

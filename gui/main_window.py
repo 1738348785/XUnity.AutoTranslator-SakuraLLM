@@ -1,5 +1,4 @@
 import json
-import socket
 import sys
 from pathlib import Path
 
@@ -91,6 +90,13 @@ UI_TEXT = {
         "reasoning_effort": "深度思考",
         "upstream_url": "上游地址",
         "request_timeout": "请求超时",
+        "param_temperature": "温度 (temperature)",
+        "param_top_p": "Top-P 采样 (top_p)",
+        "param_max_tokens": "最大生成长度 (max_tokens)",
+        "param_frequency_penalty": "频率惩罚 (frequency_penalty)",
+        "param_repeat_count": "重复检测阈值 (repeat_count)",
+        "param_max_retries": "最大重试次数 (max_retries)",
+        "param_max_concurrency": "最大并发数 (max_concurrency)",
         "usage_tips": "使用提示",
         "usage_tips_desc": "首次使用建议先在“配置中心”填写 Base URL、模型名和端口；如果要调整提示词或额外请求体字段，可在“提示词”页继续设置。",
         "quick_steps": "快速流程",
@@ -209,6 +215,13 @@ UI_TEXT = {
         "reasoning_effort": "Reasoning Effort",
         "upstream_url": "Upstream URL",
         "request_timeout": "Request Timeout",
+        "param_temperature": "Temperature",
+        "param_top_p": "Top-P Sampling",
+        "param_max_tokens": "Max Tokens",
+        "param_frequency_penalty": "Frequency Penalty",
+        "param_repeat_count": "Repeat Detection Threshold",
+        "param_max_retries": "Max Retries",
+        "param_max_concurrency": "Max Concurrency",
         "usage_tips": "Usage Tips",
         "usage_tips_desc": "For first-time use, fill in Base URL, model name, and port in Settings first. If you need to adjust prompts or extra request fields, continue in the Prompts page.",
         "quick_steps": "Quick Steps",
@@ -297,7 +310,7 @@ BUILTIN_PROMPT_PRESET_NAMES = {
     "sakura预设": "builtin_sakura_preset",
 }
 
-APP_VERSION = "v1.0.1"
+APP_VERSION = "v1.0.2"
 
 
 def detect_ui_language() -> str:
@@ -349,18 +362,67 @@ class ServiceThread(QThread):
     def run(self):
         logger = LoggerBridge(self._handle_log)
         self.service = TranslationService(self.config, logger)
+        started = False
         try:
             self.service.start()
             self.started_ok.emit()
+            started = True
             self.service.serve_forever()
         except Exception as e:
             self.failed.emit(str(e))
+            return
         finally:
-            self.stopped_ok.emit()
+            if started:
+                self.stopped_ok.emit()
 
     def stop_service(self):
         if self.service:
             self.service.stop()
+
+
+class TestTranslationThread(QThread):
+    finished_ok = Signal(str)
+    finished_err = Signal(str)
+
+    def __init__(self, url: str, text: str, timeout: int):
+        super().__init__()
+        self.url = url
+        self.text = text
+        self.timeout = timeout
+
+    def run(self):
+        try:
+            response = requests.get(
+                self.url,
+                params={"text": self.text},
+                timeout=self.timeout,
+            )
+            if response.ok:
+                self.finished_ok.emit(response.text)
+            else:
+                self.finished_ok.emit(f"HTTP {response.status_code}\n{response.text}")
+        except Exception as e:
+            self.finished_err.emit(str(e))
+
+
+class HealthCheckThread(QThread):
+    ok = Signal()
+    failed = Signal(str)
+
+    def __init__(self, base_url: str, timeout: int = 5):
+        super().__init__()
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+
+    def run(self):
+        try:
+            response = requests.get(f"{self.base_url}/v1/models", timeout=self.timeout)
+            if response.ok:
+                self.ok.emit()
+            else:
+                self.failed.emit(f"HTTP {response.status_code}")
+        except Exception as e:
+            self.failed.emit(str(e))
 
 
 class MainWindow(QMainWindow):
@@ -464,6 +526,7 @@ class MainWindow(QMainWindow):
             "frequency_penalty": self.frequency_penalty_spin.value(),
             "repeat_count": self.repeat_count_spin.value(),
             "max_retries": self.max_retries_spin.value(),
+            "max_concurrency": self.max_concurrency_spin.value(),
             "custom_headers_text": self.custom_headers_edit.toPlainText(),
             "system_prompt": self.system_prompt_edit.toPlainText(),
             "prompt_preset_name": self._selected_prompt_preset_name(),
@@ -493,6 +556,7 @@ class MainWindow(QMainWindow):
         self.frequency_penalty_spin.setValue(state["frequency_penalty"])
         self.repeat_count_spin.setValue(state["repeat_count"])
         self.max_retries_spin.setValue(state["max_retries"])
+        self.max_concurrency_spin.setValue(state.get("max_concurrency", 2))
         self.custom_headers_edit.setPlainText(state["custom_headers_text"])
         self.system_prompt_edit.setPlainText(state["system_prompt"])
         self.test_input.setPlainText(state["test_input"])
@@ -920,13 +984,16 @@ class MainWindow(QMainWindow):
         self.repeat_count_spin.setRange(1, 100)
         self.max_retries_spin = QSpinBox()
         self.max_retries_spin.setRange(1, 20)
+        self.max_concurrency_spin = QSpinBox()
+        self.max_concurrency_spin.setRange(1, 64)
 
-        model_form.addRow("temperature", self.temperature_spin)
-        model_form.addRow("top_p", self.top_p_spin)
-        model_form.addRow("max_tokens", self.max_tokens_spin)
-        model_form.addRow("frequency_penalty", self.frequency_penalty_spin)
-        model_form.addRow("repeat_count", self.repeat_count_spin)
-        model_form.addRow("max_retries", self.max_retries_spin)
+        model_form.addRow(self._t("param_temperature"), self.temperature_spin)
+        model_form.addRow(self._t("param_top_p"), self.top_p_spin)
+        model_form.addRow(self._t("param_max_tokens"), self.max_tokens_spin)
+        model_form.addRow(self._t("param_frequency_penalty"), self.frequency_penalty_spin)
+        model_form.addRow(self._t("param_repeat_count"), self.repeat_count_spin)
+        model_form.addRow(self._t("param_max_retries"), self.max_retries_spin)
+        model_form.addRow(self._t("param_max_concurrency"), self.max_concurrency_spin)
 
         top_row.addWidget(connection_group, 1)
         top_row.addWidget(model_group, 1)
@@ -1044,6 +1111,7 @@ class MainWindow(QMainWindow):
 
         self.log_output = QTextEdit()
         self.log_output.setReadOnly(True)
+        self.log_output.document().setMaximumBlockCount(5000)
 
         group_layout.addLayout(buttons)
         group_layout.addWidget(self.log_output, 1)
@@ -1565,6 +1633,7 @@ class MainWindow(QMainWindow):
         self.frequency_penalty_spin.setValue(cfg.frequency_penalty)
         self.repeat_count_spin.setValue(cfg.repeat_count)
         self.max_retries_spin.setValue(cfg.max_retries)
+        self.max_concurrency_spin.setValue(cfg.max_concurrency)
 
         headers = dict(cfg.custom_headers or {})
         self._set_reasoning_effort(headers.pop("reasoning_effort", ""))
@@ -1715,6 +1784,7 @@ class MainWindow(QMainWindow):
             newline_mode=self.newline_mode_combo.currentText(),
             repeat_count=self.repeat_count_spin.value(),
             max_retries=self.max_retries_spin.value(),
+            max_concurrency=self.max_concurrency_spin.value(),
             temperature=self.temperature_spin.value(),
             max_tokens=self.max_tokens_spin.value(),
             top_p=self.top_p_spin.value(),
@@ -1723,16 +1793,6 @@ class MainWindow(QMainWindow):
             prompt_presets=dict(self.custom_prompt_presets),
             ui_language=self._current_ui_language_mode(),
         )
-
-    def _is_port_available(self, port: int) -> bool:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            sock.bind(("127.0.0.1", port))
-            return True
-        except OSError:
-            return False
-        finally:
-            sock.close()
 
     def _is_service_running(self) -> bool:
         return self.service_thread is not None and self.service_thread.isRunning()
@@ -1851,10 +1911,6 @@ class MainWindow(QMainWindow):
             return
         if not self.save_config():
             return
-        if not self._is_port_available(self.config.listen_port):
-            self._show_warning(self._t("port_in_use"), self._t("port_in_use_message", port=self.config.listen_port))
-            self.append_log("ERROR", self._t("port_in_use_log", port=self.config.listen_port))
-            return
 
         self.service_thread = ServiceThread(self.config)
         self.service_thread.log_received.connect(self.append_log)
@@ -1871,30 +1927,37 @@ class MainWindow(QMainWindow):
             return
         self._set_stopping_state()
         self.service_thread.stop_service()
-        self.service_thread.wait(3000)
+        if not self.service_thread.wait(3000):
+            self.append_log("WARN", "服务线程在 3 秒内未能正常停止，强制终止")
+            self.service_thread.terminate()
+            self.service_thread.wait(1000)
 
     def test_translation(self):
         text = self.test_input.toPlainText().strip()
         if not text:
             self._show_information(self._t("notice"), self._t("enter_test_text_first"))
             return
+        if getattr(self, "_test_thread", None) is not None and self._test_thread.isRunning():
+            return
         self.test_button.setEnabled(False)
         self.test_output.setPlainText(self._t("requesting"))
-        try:
-            config = self._collect_config_from_form()
-            response = requests.get(
-                config.translate_url,
-                params={"text": text},
-                timeout=config.request_timeout,
-            )
-            if response.ok:
-                self.test_output.setPlainText(response.text)
-            else:
-                self.test_output.setPlainText(f"HTTP {response.status_code}\n{response.text}")
-        except Exception as e:
-            self.test_output.setPlainText(str(e))
-        finally:
-            self.test_button.setEnabled(True)
+        config = self._collect_config_from_form()
+        self._test_thread = TestTranslationThread(
+            config.translate_url, text, config.request_timeout
+        )
+        self._test_thread.finished_ok.connect(self._on_test_done)
+        self._test_thread.finished_err.connect(self._on_test_done)
+        self._test_thread.finished.connect(self._on_test_thread_finished)
+        self._test_thread.start()
+
+    def _on_test_done(self, message: str):
+        self.test_output.setPlainText(message)
+
+    def _on_test_thread_finished(self):
+        self.test_button.setEnabled(True)
+        if self._test_thread is not None:
+            self._test_thread.deleteLater()
+            self._test_thread = None
 
     def clear_logs(self):
         self.log_output.clear()
@@ -1904,6 +1967,26 @@ class MainWindow(QMainWindow):
         self.append_log("INFO", self._t("service_started_success"))
         if self.tray_icon:
             self.tray_icon.showMessage("SakuraLLM GUI", self._t("service_started_balloon"), QSystemTrayIcon.MessageIcon.Information, 2000)
+        self._start_backend_health_check()
+
+    def _start_backend_health_check(self):
+        existing = getattr(self, "_health_thread", None)
+        if existing is not None and existing.isRunning():
+            return
+        self._health_thread = HealthCheckThread(self.config.base_url, timeout=5)
+        self._health_thread.ok.connect(
+            lambda: self.append_log("INFO", f"后端连通正常: {self.config.base_url}")
+        )
+        self._health_thread.failed.connect(
+            lambda msg: self.append_log("WARN", f"后端不可达 ({self.config.base_url}): {msg}，翻译请求将会失败")
+        )
+        self._health_thread.finished.connect(self._on_health_finished)
+        self._health_thread.start()
+
+    def _on_health_finished(self):
+        if self._health_thread is not None:
+            self._health_thread.deleteLater()
+            self._health_thread = None
 
     def _on_service_stopped(self):
         self._set_idle_state()
