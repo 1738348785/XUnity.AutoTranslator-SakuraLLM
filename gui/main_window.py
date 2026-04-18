@@ -4,9 +4,10 @@ import sys
 from pathlib import Path
 
 import requests
-from PySide6.QtCore import QLocale, QPoint, QSize, QThread, Qt, Signal
-from PySide6.QtGui import QAction, QCloseEvent, QColor, QIcon, QPainter, QPen, QTextCharFormat, QTextCursor
+from PySide6.QtCore import QEvent, QLocale, QPoint, QRect, QSize, QThread, Qt, Signal
+from PySide6.QtGui import QAction, QCloseEvent, QColor, QCursor, QIcon, QPainter, QPen, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
+    QApplication,
     QButtonGroup,
     QComboBox,
     QDoubleSpinBox,
@@ -445,6 +446,8 @@ class MainWindow(QMainWindow):
         ("page_log_title", "page_log_desc"),
     ]
 
+    _RESIZE_MARGIN = 6
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("XUnity.AutoTranslator-SakuraLLM GUI")
@@ -479,6 +482,7 @@ class MainWindow(QMainWindow):
         self._set_idle_state()
         self._switch_page(0)
         self._sync_titlebar_buttons()
+        self._install_resize_support()
 
     def _t(self, key: str, **kwargs) -> str:
         text = self.ui_text[key]
@@ -1501,6 +1505,124 @@ class MainWindow(QMainWindow):
         self._style_dialog(dialog)
         accepted = bool(dialog.exec())
         return dialog.textValue(), accepted
+
+    def _install_resize_support(self):
+        self._resize_edges = Qt.Edge(0)
+        self._resize_start_global = QPoint()
+        self._resize_start_geom = None
+        self._override_cursor_active = False
+        self._enable_mouse_tracking_recursive(self)
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
+
+    def _enable_mouse_tracking_recursive(self, widget):
+        widget.setMouseTracking(True)
+        for child in widget.findChildren(QWidget):
+            child.setMouseTracking(True)
+
+    def eventFilter(self, obj, event):
+        if not isinstance(obj, QWidget) or obj.window() is not self:
+            return super().eventFilter(obj, event)
+        etype = event.type()
+
+        if etype == QEvent.Type.MouseMove:
+            if self._resize_edges:
+                self._perform_resize(event.globalPosition().toPoint())
+                return True
+            if not self.isMaximized() and not self.isFullScreen():
+                self._apply_hover_cursor(self._edges_at(event.globalPosition().toPoint()))
+            else:
+                self._clear_override_cursor()
+        elif etype == QEvent.Type.MouseButtonPress:
+            if (
+                event.button() == Qt.MouseButton.LeftButton
+                and not self.isMaximized()
+                and not self.isFullScreen()
+            ):
+                edges = self._edges_at(event.globalPosition().toPoint())
+                if edges:
+                    self._resize_edges = edges
+                    self._resize_start_global = event.globalPosition().toPoint()
+                    self._resize_start_geom = QRect(self.geometry())
+                    return True
+        elif etype == QEvent.Type.MouseButtonRelease:
+            if self._resize_edges and event.button() == Qt.MouseButton.LeftButton:
+                self._resize_edges = Qt.Edge(0)
+                self._resize_start_geom = None
+                self._clear_override_cursor()
+                return True
+        elif etype == QEvent.Type.Leave and not self._resize_edges:
+            self._clear_override_cursor()
+
+        return super().eventFilter(obj, event)
+
+    def _edges_at(self, global_pos):
+        local = self.mapFromGlobal(global_pos)
+        rect = self.rect()
+        if not rect.contains(local):
+            return Qt.Edge(0)
+        m = self._RESIZE_MARGIN
+        edges = Qt.Edge(0)
+        if local.x() < m:
+            edges |= Qt.Edge.LeftEdge
+        elif local.x() >= rect.width() - m:
+            edges |= Qt.Edge.RightEdge
+        if local.y() < m:
+            edges |= Qt.Edge.TopEdge
+        elif local.y() >= rect.height() - m:
+            edges |= Qt.Edge.BottomEdge
+        return edges
+
+    def _cursor_for_edges(self, edges):
+        L = Qt.Edge.LeftEdge
+        R = Qt.Edge.RightEdge
+        T = Qt.Edge.TopEdge
+        B = Qt.Edge.BottomEdge
+        if edges == (L | T) or edges == (R | B):
+            return Qt.CursorShape.SizeFDiagCursor
+        if edges == (R | T) or edges == (L | B):
+            return Qt.CursorShape.SizeBDiagCursor
+        if edges == L or edges == R:
+            return Qt.CursorShape.SizeHorCursor
+        if edges == T or edges == B:
+            return Qt.CursorShape.SizeVerCursor
+        return None
+
+    def _apply_hover_cursor(self, edges):
+        shape = self._cursor_for_edges(edges)
+        if shape is None:
+            self._clear_override_cursor()
+            return
+        cursor = QCursor(shape)
+        if self._override_cursor_active:
+            QApplication.changeOverrideCursor(cursor)
+        else:
+            QApplication.setOverrideCursor(cursor)
+            self._override_cursor_active = True
+
+    def _clear_override_cursor(self):
+        if self._override_cursor_active:
+            QApplication.restoreOverrideCursor()
+            self._override_cursor_active = False
+
+    def _perform_resize(self, global_pos):
+        delta = global_pos - self._resize_start_global
+        geom = self._resize_start_geom
+        new = QRect(geom)
+        min_w = max(self.minimumWidth(), 1)
+        min_h = max(self.minimumHeight(), 1)
+
+        if self._resize_edges & Qt.Edge.LeftEdge:
+            new.setLeft(min(geom.left() + delta.x(), geom.right() - min_w + 1))
+        if self._resize_edges & Qt.Edge.RightEdge:
+            new.setRight(max(geom.right() + delta.x(), geom.left() + min_w - 1))
+        if self._resize_edges & Qt.Edge.TopEdge:
+            new.setTop(min(geom.top() + delta.y(), geom.bottom() - min_h + 1))
+        if self._resize_edges & Qt.Edge.BottomEdge:
+            new.setBottom(max(geom.bottom() + delta.y(), geom.top() + min_h - 1))
+
+        self.setGeometry(new)
 
     def _titlebar_mouse_press(self, event):
         if event.button() == Qt.MouseButton.LeftButton and not self.isMaximized():
