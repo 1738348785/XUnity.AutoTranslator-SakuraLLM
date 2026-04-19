@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 import requests
-from PySide6.QtCore import QEvent, QLocale, QPoint, QRect, QSize, QThread, Qt, Signal
+from PySide6.QtCore import QEvent, QLocale, QPoint, QRect, QSize, QThread, Qt, Signal, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QAction, QCloseEvent, QColor, QCursor, QIcon, QPainter, QPen, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QFrame,
+    QGraphicsOpacityEffect,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -318,7 +319,7 @@ BUILTIN_PROMPT_PRESET_NAMES = {
     "sakura预设": "builtin_sakura_preset",
 }
 
-APP_VERSION = "v1.0.2"
+APP_VERSION = "v1.0.3"
 
 
 def detect_ui_language() -> str:
@@ -746,17 +747,18 @@ class MainWindow(QMainWindow):
         self.nav_group.setExclusive(True)
 
         nav_items = [
-            (self._t("nav_launch"), QStyle.StandardPixmap.SP_MediaPlay, 0),
-            (self._t("nav_settings"), QStyle.StandardPixmap.SP_FileDialogDetailedView, 1),
-            (self._t("nav_prompt"), QStyle.StandardPixmap.SP_FileDialogContentsView, 2),
-            (self._t("nav_test"), QStyle.StandardPixmap.SP_DialogApplyButton, 3),
-            (self._t("nav_log"), QStyle.StandardPixmap.SP_FileDialogInfoView, 4),
+            (self._t("nav_launch"), "play.svg", 0),
+            (self._t("nav_settings"), "settings.svg", 1),
+            (self._t("nav_prompt"), "terminal.svg", 2),
+            (self._t("nav_test"), "zap.svg", 3),
+            (self._t("nav_log"), "list.svg", 4),
         ]
-        for text, icon_type, index in nav_items:
+        for text, icon_name, index in nav_items:
             button = QPushButton(text)
             button.setObjectName("navButton")
             button.setCheckable(True)
-            button.setIcon(self.style().standardIcon(icon_type))
+            icon_path = str(get_app_resource_path("assets", "icons", icon_name))
+            button.setIcon(QIcon(icon_path))
             button.setIconSize(QSize(20, 20))
             button.setMinimumHeight(52)
             button.clicked.connect(lambda checked, idx=index: self._switch_page(idx))
@@ -794,16 +796,14 @@ class MainWindow(QMainWindow):
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         layout.addWidget(spacer)
 
-        self.quick_log_button = QPushButton(self._t("quick_log"))
-        self.quick_log_button.setObjectName("ghostButton")
-        self.quick_log_button.clicked.connect(lambda: self._switch_page(4))
-        layout.addWidget(self.quick_log_button, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-
         right_box = QVBoxLayout()
         right_box.setSpacing(10)
 
         action_row = QHBoxLayout()
         action_row.setSpacing(10)
+        self.quick_log_button = QPushButton(self._t("quick_log"))
+        self.quick_log_button.setObjectName("ghostButton")
+        self.quick_log_button.clicked.connect(lambda: self._switch_page(4))
         self.save_button = QPushButton(self._t("save_config"))
         self.import_button = QPushButton(self._t("import_config"))
         self.export_button = QPushButton(self._t("export_config"))
@@ -812,6 +812,8 @@ class MainWindow(QMainWindow):
         self.import_button.clicked.connect(self.import_config)
         self.export_button.clicked.connect(self.export_config)
         self.reset_button.clicked.connect(self.reset_defaults)
+        
+        action_row.addWidget(self.quick_log_button)
         action_row.addWidget(self.save_button)
         action_row.addWidget(self.import_button)
         action_row.addWidget(self.export_button)
@@ -839,13 +841,13 @@ class MainWindow(QMainWindow):
         layout.setSpacing(16)
 
         top_row = QHBoxLayout()
-        top_row.setSpacing(20)
+        top_row.setSpacing(16)
 
         hero_card = QFrame()
         hero_card.setObjectName("heroCard")
         hero_layout = QVBoxLayout(hero_card)
-        hero_layout.setContentsMargins(24, 24, 24, 24)
-        hero_layout.setSpacing(16)
+        hero_layout.setContentsMargins(28, 28, 28, 28)
+        hero_layout.setSpacing(20)
 
         title = QLabel(self._t("local_service_title"))
         title.setObjectName("sectionTitle")
@@ -854,61 +856,74 @@ class MainWindow(QMainWindow):
         desc.setWordWrap(True)
         hero_layout.addWidget(title)
         hero_layout.addWidget(desc)
+        
+        hero_layout.addStretch()
 
         quick_row = QHBoxLayout()
-        quick_row.setSpacing(10)
-
+        quick_row.setSpacing(12)
         settings_jump = QPushButton(self._t("config_center"))
         settings_jump.setObjectName("ghostButton")
+        settings_jump.setMinimumHeight(44)
         settings_jump.clicked.connect(lambda: self._switch_page(1))
         test_jump = QPushButton(self._t("translation_test"))
         test_jump.setObjectName("ghostButton")
+        test_jump.setMinimumHeight(44)
         test_jump.clicked.connect(lambda: self._switch_page(3))
-
-        self.start_button = QPushButton(self._t("start_service"))
-        self.start_button.setObjectName("primaryButton")
-        self.stop_button = QPushButton(self._t("stop_service"))
-        self.stop_button.setObjectName("dangerButton")
-        self.start_button.clicked.connect(self.start_service)
-        self.stop_button.clicked.connect(self.stop_service)
-
         quick_row.addWidget(settings_jump)
         quick_row.addWidget(test_jump)
         quick_row.addStretch()
-        quick_row.addWidget(self.stop_button)
-        quick_row.addWidget(self.start_button)
         hero_layout.addLayout(quick_row)
 
-        top_row.addWidget(hero_card, 3)
+        top_row.addWidget(hero_card, 5)
 
-        side_card = QFrame()
-        side_card.setObjectName("summaryCard")
-        side_layout = QVBoxLayout(side_card)
-        side_layout.setContentsMargins(18, 18, 18, 18)
-        side_layout.setSpacing(10)
-        side_title = QLabel(self._t("quick_status"))
-        side_title.setObjectName("summaryTitle")
+        control_card = QFrame()
+        control_card.setObjectName("heroCard")
+        control_layout = QVBoxLayout(control_card)
+        control_layout.setContentsMargins(28, 28, 28, 28)
+        control_layout.setSpacing(20)
+
+        status_hbox = QHBoxLayout()
+        status_label_title = QLabel(self._t("quick_status"))
+        status_label_title.setObjectName("summaryTitle")
+        status_hbox.addWidget(status_label_title)
+        status_hbox.addStretch()
+        
         self.launch_status_value = QLabel(self._t("idle"))
         self.launch_status_value.setObjectName("heroStatus")
-        side_desc = QLabel(self._t("quick_status_desc"))
-        side_desc.setObjectName("mutedText")
-        side_desc.setWordWrap(True)
-        side_layout.addWidget(side_title)
-        side_layout.addWidget(self.launch_status_value)
-        side_layout.addWidget(side_desc)
-        side_layout.addStretch()
+        self.launch_status_value.setMinimumHeight(60)
+        
+        control_layout.addLayout(status_hbox)
+        control_layout.addWidget(self.launch_status_value)
+        control_layout.addStretch()
 
-        top_row.addWidget(side_card, 1)
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(12)
+        self.start_button = QPushButton(self._t("start_service"))
+        self.start_button.setObjectName("primaryButton")
+        self.start_button.setMinimumHeight(44)
+        self.stop_button = QPushButton(self._t("stop_service"))
+        self.stop_button.setObjectName("dangerButton")
+        self.stop_button.setMinimumHeight(44)
+        self.start_button.clicked.connect(self.start_service)
+        self.stop_button.clicked.connect(self.stop_service)
+        
+        btn_row.addWidget(self.stop_button, 1)
+        btn_row.addWidget(self.start_button, 1)
+        
+        control_layout.addLayout(btn_row)
+
+        top_row.addWidget(control_card, 4)
+
         layout.addLayout(top_row)
 
         summary_grid = QGridLayout()
         summary_grid.setHorizontalSpacing(14)
         summary_grid.setVerticalSpacing(14)
 
-        model_card, self.launch_model_value = self._create_summary_card(self._t("current_model"))
-        reasoning_card, self.launch_reasoning_value = self._create_summary_card(self._t("reasoning_effort"))
-        base_url_card, self.launch_base_url_value = self._create_summary_card(self._t("upstream_url"))
-        timeout_card, self.launch_timeout_value = self._create_summary_card(self._t("request_timeout"))
+        model_card, self.launch_model_value = self._create_summary_card(self._t("current_model"), 1)
+        reasoning_card, self.launch_reasoning_value = self._create_summary_card(self._t("reasoning_effort"), 2)
+        base_url_card, self.launch_base_url_value = self._create_summary_card(self._t("upstream_url"), 1)
+        timeout_card, self.launch_timeout_value = self._create_summary_card(self._t("request_timeout"), 1)
 
         summary_grid.addWidget(model_card, 0, 0)
         summary_grid.addWidget(reasoning_card, 0, 1)
@@ -1140,9 +1155,13 @@ class MainWindow(QMainWindow):
         scroll.setWidget(content)
         return scroll
 
-    def _create_summary_card(self, title: str):
+    def _create_summary_card(self, title: str, target_page: int = -1):
         frame = QFrame()
         frame.setObjectName("summaryCard")
+        if target_page >= 0:
+            frame.setCursor(Qt.CursorShape.PointingHandCursor)
+            frame.mousePressEvent = lambda e: self._switch_page(target_page)
+
         layout = QVBoxLayout(frame)
         layout.setContentsMargins(18, 16, 18, 16)
         layout.setSpacing(6)
@@ -1159,6 +1178,7 @@ class MainWindow(QMainWindow):
 
     def _switch_page(self, index: int):
         self.page_stack.setCurrentIndex(index)
+        
         title, desc = self.page_meta[index]
         self.page_title_label.setText(title)
         self.page_desc_label.setText(desc)
@@ -1166,236 +1186,10 @@ class MainWindow(QMainWindow):
             button.setChecked(i == index)
 
     def _apply_styles(self):
-        self.setStyleSheet(
-            """
-            QMainWindow {
-                background-color: #1b1b1f;
-                color: #f5f5f7;
-            }
-            QLabel {
-                color: #ffffff;
-            }
-            QWidget#appRoot, QWidget#mainPanel {
-                background-color: #1b1b1f;
-            }
-            QFrame#titleBar {
-                background-color: #111115;
-                border-bottom: 1px solid #2e2e37;
-            }
-            QLabel#windowTitleLabel {
-                color: #ffffff;
-                font-size: 14px;
-                font-weight: 700;
-            }
-            QLabel#windowSubtitleLabel {
-                color: #9999a7;
-                font-size: 11px;
-            }
-            QPushButton#titleButton, QPushButton#closeTitleButton {
-                background: transparent;
-                border: none;
-                border-radius: 8px;
-                color: #f5f5f7;
-                font-size: 14px;
-                font-weight: 700;
-                padding: 2px 4px;
-            }
-            QPushButton#titleButton:hover {
-                background-color: #30303a;
-            }
-            QPushButton#closeTitleButton:hover {
-                background-color: #cf5f91;
-                color: #ffffff;
-            }
-            QFrame#sidebar {
-                background-color: #202024;
-                border-right: 1px solid #34343c;
-            }
-            QLabel#brandTitle {
-                color: #ffffff;
-                font-size: 24px;
-                font-weight: 700;
-            }
-            QLabel#brandSubtitle, QLabel#sidebarFooter, QLabel#mutedText {
-                color: #a9a9b4;
-                font-size: 13px;
-            }
-            QLabel#accentBadge {
-                color: #ffafe0;
-                background-color: #342636;
-                border: 1px solid #7d5770;
-                border-radius: 12px;
-                padding: 5px 10px;
-                font-size: 12px;
-                font-weight: 700;
-            }
-            QPushButton#navButton {
-                background: transparent;
-                border: none;
-                border-radius: 14px;
-                color: #c8c8d2;
-                text-align: left;
-                padding: 14px 16px;
-                font-size: 15px;
-                font-weight: 600;
-            }
-            QPushButton#navButton:hover {
-                background-color: #2d2d33;
-                color: #ffffff;
-            }
-            QPushButton#navButton:checked {
-                background-color: #34343d;
-                color: #ff9ad6;
-                border-left: 4px solid #ff8fd1;
-                padding-left: 12px;
-            }
-            QPushButton#ghostButton {
-                background-color: #2c2c33;
-                border: 1px solid #43434f;
-                color: #f4f4f7;
-            }
-            QPushButton#ghostButton:hover {
-                background-color: #383842;
-                border-color: #575765;
-            }
-            QFrame#headerCard, QFrame#heroCard, QFrame#summaryCard, QGroupBox {
-                background-color: #25252b;
-                border: 1px solid #373740;
-                border-radius: 18px;
-            }
-            QLabel#pageTitle {
-                color: #ffffff;
-                font-size: 28px;
-                font-weight: 700;
-            }
-            QLabel#pageSubtitle {
-                color: #a9a9b4;
-                font-size: 13px;
-            }
-            QLabel#statusPill {
-                background-color: #312533;
-                border: 1px solid #7f4e6d;
-                border-radius: 12px;
-                color: #ff9ad6;
-                padding: 6px 12px;
-                font-weight: 700;
-            }
-            QLabel#urlValue {
-                color: #e0e0e5;
-                font-size: 13px;
-            }
-            QLabel#sectionTitle {
-                color: #ffffff;
-                font-size: 24px;
-                font-weight: 700;
-            }
-            QLabel#summaryTitle {
-                color: #a9a9b4;
-                font-size: 12px;
-                font-weight: 600;
-            }
-            QLabel#heroStatus {
-                color: #ffafe0;
-                font-size: 30px;
-                font-weight: 800;
-            }
-            QLabel#summaryValue {
-                color: #ffffff;
-                font-size: 18px;
-                font-weight: 700;
-            }
-            QPushButton {
-                background-color: #33333a;
-                border: 1px solid #484853;
-                border-radius: 12px;
-                color: #f7f7fa;
-                padding: 10px 16px;
-                font-size: 14px;
-                font-weight: 600;
-            }
-            QPushButton:hover {
-                background-color: #3a3a43;
-            }
-            QPushButton:disabled {
-                background-color: #2a2a2f;
-                border-color: #35353a;
-                color: #7f7f89;
-            }
-            QPushButton#primaryButton {
-                background-color: #f5a0d9;
-                border: none;
-                color: #ffffff;
-                padding: 12px 22px;
-                font-size: 15px;
-                font-weight: 700;
-            }
-            QPushButton#primaryButton:hover {
-                background-color: #ffb0e1;
-            }
-            QPushButton#dangerButton {
-                background-color: #2d242d;
-                border: 1px solid #80506f;
-                color: #ffd8ec;
-            }
-            QLineEdit, QPlainTextEdit, QTextEdit, QSpinBox, QDoubleSpinBox, QComboBox {
-                background-color: #2e2e35;
-                border: 1px solid #4a4a54;
-                border-radius: 12px;
-                color: #f7f7fa;
-                padding: 10px 12px;
-                selection-background-color: #ff96d3;
-            }
-            QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {
-                border: 1px solid #ff96d3;
-            }
-            QComboBox::drop-down {
-                border: none;
-                width: 24px;
-            }
-            QComboBox QAbstractItemView {
-                background-color: #2e2e35;
-                border: 1px solid #4a4a54;
-                color: #f7f7fa;
-                selection-background-color: #ff96d3;
-                selection-color: #ffffff;
-                outline: 0;
-            }
-            QGroupBox {
-                margin-top: 14px;
-                padding-top: 10px;
-                font-size: 14px;
-                font-weight: 700;
-                color: #ffffff;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 14px;
-                padding: 0 6px;
-                color: #ffffff;
-            }
-            QScrollArea {
-                background: transparent;
-                border: none;
-            }
-            QScrollArea > QWidget > QWidget {
-                background: transparent;
-            }
-            QScrollBar:vertical {
-                background: #232329;
-                width: 12px;
-                margin: 2px;
-                border-radius: 6px;
-            }
-            QScrollBar::handle:vertical {
-                background: #53535f;
-                min-height: 30px;
-                border-radius: 6px;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
-            """
-        )
+        qss_path = get_app_resource_path("assets", "theme.qss")
+        if qss_path.exists():
+            with open(qss_path, "r", encoding="utf-8") as f:
+                self.setStyleSheet(f.read())
 
     def _dialog_stylesheet(self) -> str:
         return """
@@ -2151,4 +1945,3 @@ class MainWindow(QMainWindow):
             self.tray_icon.deleteLater()
             self.tray_icon = None
         super().closeEvent(event)
-        os._exit(0)
