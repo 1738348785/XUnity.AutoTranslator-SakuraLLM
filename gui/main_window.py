@@ -854,9 +854,11 @@ class MainWindow(QMainWindow):
         desc = QLabel(self._t("local_service_desc"))
         desc.setObjectName("mutedText")
         desc.setWordWrap(True)
+        desc.setMinimumWidth(300)
+        desc.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.MinimumExpanding)
+        
         hero_layout.addWidget(title)
         hero_layout.addWidget(desc)
-        
         hero_layout.addStretch()
 
         quick_row = QHBoxLayout()
@@ -890,7 +892,8 @@ class MainWindow(QMainWindow):
         
         self.launch_status_value = QLabel(self._t("idle"))
         self.launch_status_value.setObjectName("heroStatus")
-        self.launch_status_value.setMinimumHeight(60)
+        self.launch_status_value.setMinimumWidth(150)
+        self.launch_status_value.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         
         control_layout.addLayout(status_hbox)
         control_layout.addWidget(self.launch_status_value)
@@ -917,8 +920,10 @@ class MainWindow(QMainWindow):
         layout.addLayout(top_row)
 
         summary_grid = QGridLayout()
-        summary_grid.setHorizontalSpacing(14)
-        summary_grid.setVerticalSpacing(14)
+        summary_grid.setHorizontalSpacing(16)
+        summary_grid.setVerticalSpacing(16)
+        summary_grid.setColumnStretch(0, 1)
+        summary_grid.setColumnStretch(1, 1)
 
         model_card, self.launch_model_value = self._create_summary_card(self._t("current_model"), 1)
         reasoning_card, self.launch_reasoning_value = self._create_summary_card(self._t("reasoning_effort"), 2)
@@ -938,20 +943,23 @@ class MainWindow(QMainWindow):
         hint_layout = QVBoxLayout(hints_group)
         hint = QLabel(self._t("usage_tips_desc"))
         hint.setWordWrap(True)
+        hint.setMargin(3)
         hint.setObjectName("mutedText")
         hint_layout.addWidget(hint)
 
         steps_group = QGroupBox(self._t("quick_steps"))
         steps_layout = QVBoxLayout(steps_group)
         steps = QLabel(self._t("quick_steps_desc"))
+        steps.setWordWrap(True)
+        steps.setMargin(3)
         steps.setObjectName("mutedText")
         steps_layout.addWidget(steps)
 
-        bottom_row.addWidget(hints_group, 2)
-        bottom_row.addWidget(steps_group, 1)
+        bottom_row.addWidget(hints_group, 5)
+        bottom_row.addWidget(steps_group, 4)
         layout.addLayout(bottom_row)
         layout.addStretch(1)
-        return page
+        return self._wrap_scroll_page(page)
 
     def _build_settings_page(self):
         content = QWidget()
@@ -1174,6 +1182,7 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(title_label)
         layout.addWidget(value_label)
+        value_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         return frame, value_label
 
     def _switch_page(self, index: int):
@@ -1933,6 +1942,11 @@ class MainWindow(QMainWindow):
             self.hide()
             self.tray_icon.showMessage("SakuraLLM GUI", self._t("minimized_to_tray"), QSystemTrayIcon.MessageIcon.Information, 2000)
             return
+            
+        app = QApplication.instance()
+        if app is not None:
+            app.removeEventFilter(self)
+            
         self.stop_service()
         if self.service_thread is not None:
             self.service_thread.wait(2000)
@@ -1944,4 +1958,8 @@ class MainWindow(QMainWindow):
             self.tray_icon.hide()
             self.tray_icon.deleteLater()
             self.tray_icon = None
+            
         super().closeEvent(event)
+        
+        if app is not None:
+            app.quit()

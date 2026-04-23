@@ -48,7 +48,7 @@ QLabel#brandTitle {
 }
 QLabel#brandSubtitle, QLabel#sidebarFooter, QLabel#mutedText {
     color: #a9a9b4;
-    font-size: 13px;
+    font-size: 14px;
 }
 QLabel#accentBadge {
     color: #ffafe0;
@@ -62,7 +62,10 @@ QLabel#accentBadge {
 QPushButton#navButton {
     background: transparent;
     border: none;
-    border-radius: 14px;
+    border-top-left-radius: 4px;
+    border-bottom-left-radius: 4px;
+    border-top-right-radius: 14px;
+    border-bottom-right-radius: 14px;
     color: #c8c8d2;
     text-align: left;
     padding: 14px 16px;
@@ -74,7 +77,7 @@ QPushButton#navButton:hover {
     color: #ffffff;
 }
 QPushButton#navButton:checked {
-    background-color: #34343d;
+    background-color: #312533;
     color: #ff9ad6;
     border-left: 4px solid #ff8fd1;
     padding-left: 12px;
@@ -132,8 +135,9 @@ QLabel#heroStatus {
     color: #ffafe0;
     font-size: 32px;
     font-weight: 800;
-    padding-top: 4px;
-    padding-bottom: 4px;
+    padding-top: 2px;
+    padding-bottom: 6px;
+    min-height: 44px;
     qproperty-alignment: 'AlignVCenter | AlignLeft';
 }
 QLabel#summaryValue {
@@ -159,7 +163,7 @@ QPushButton:disabled {
     color: #7f7f89;
 }
 QPushButton#primaryButton {
-    background-color: #f5a0d9;
+    background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ff8fd1, stop:1 #ffb0e1);
     border: none;
     color: #ffffff;
     padding: 12px 22px;
@@ -167,7 +171,7 @@ QPushButton#primaryButton {
     font-weight: 700;
 }
 QPushButton#primaryButton:hover {
-    background-color: #ffb0e1;
+    background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ffa3dc, stop:1 #ffc4ea);
 }
 QPushButton#dangerButton {
     background-color: #2d242d;
@@ -199,15 +203,20 @@ QComboBox QAbstractItemView {
 }
 QGroupBox {
     margin-top: 14px;
-    padding-top: 10px;
+    padding-top: 16px;
+    padding-left: 11px;
+    padding-right: 11px;
+    padding-bottom: 11px;
     font-size: 14px;
     font-weight: 700;
     color: #ffffff;
 }
 QGroupBox::title {
     subcontrol-origin: margin;
+    subcontrol-position: top left;
     left: 14px;
     padding: 0 6px;
+    background-color: #25252b;
     color: #ffffff;
 }
 QScrollArea {
