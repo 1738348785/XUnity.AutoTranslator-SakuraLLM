@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
 from sakura_llm.config import (
     AppConfig,
     ConfigStore,
+    CONFIG_PRESETS,
     DEFAULT_SYSTEM_PROMPT,
     PROMPT_PRESETS,
     get_default_config_path,
@@ -108,12 +109,21 @@ UI_TEXT = {
         "quick_steps": "快速流程",
         "quick_steps_desc": "1. 填写连接参数\n2. 选择深度思考与模型参数\n3. 保存配置\n4. 启动服务\n5. 到测试页验证输出",
         "connection_settings": "连接配置",
+        "config_preset": "快速预设",
+        "apply_config_preset": "应用",
+        "config_preset_sakura": "Sakura 本地模型",
+        "config_preset_general": "通用大模型",
+        "config_preset_applied": "已应用配置预设: {name}",
         "default": "默认",
         "model_name": "模型名",
         "listen_port": "监听端口",
         "timeout_seconds": "超时(秒)",
         "newline_mode": "换行模式",
-        "reasoning_effort_hint": "会写入请求体中的 reasoning_effort；默认表示不额外传这个字段。",
+        "reasoning_effort_hint": "控制请求体中的 reasoning_effort 字段；默认表示不发送该字段。",
+        "thinking_mode": "思考模式",
+        "thinking_disabled": "关闭",
+        "thinking_enabled": "开启",
+        "thinking_mode_hint": "控制请求体中的 thinking 字段；关闭表示不发送该字段。",
         "model_parameters": "模型参数",
         "compatibility_notes": "兼容性说明",
         "compatibility_notes_desc": "本地接口仍保持 http://127.0.0.1:<端口>/translate 形式。若修改监听端口，请同步更新 XUnity.AutoTranslator 的 Custom.Url。",
@@ -180,6 +190,7 @@ UI_TEXT = {
         "minimized_to_tray": "程序已最小化到托盘。",
         "json_file_filter": "JSON Files (*.json)",
         "builtin_sakura_preset": "sakura预设",
+        "builtin_general_preset": "通用大模型预设",
         "dialog_ok": "确定",
         "dialog_cancel": "取消",
         "dialog_yes": "是",
@@ -236,12 +247,21 @@ UI_TEXT = {
         "quick_steps": "Quick Steps",
         "quick_steps_desc": "1. Fill in connection parameters\n2. Choose reasoning effort and model parameters\n3. Save the configuration\n4. Start the service\n5. Validate output in the test page",
         "connection_settings": "Connection Settings",
+        "config_preset": "Quick Preset",
+        "apply_config_preset": "Apply",
+        "config_preset_sakura": "Sakura Local Model",
+        "config_preset_general": "General LLM",
+        "config_preset_applied": "Applied config preset: {name}",
         "default": "Default",
         "model_name": "Model Name",
         "listen_port": "Listen Port",
         "timeout_seconds": "Timeout (s)",
         "newline_mode": "Newline Mode",
-        "reasoning_effort_hint": "This writes reasoning_effort into the request body. Default means the field is omitted.",
+        "reasoning_effort_hint": "Controls the reasoning_effort field in the request body. Default means the field is omitted.",
+        "thinking_mode": "Thinking Mode",
+        "thinking_disabled": "Disabled",
+        "thinking_enabled": "Enabled",
+        "thinking_mode_hint": "Controls the thinking field in the request body. Disabled means the field is omitted.",
         "model_parameters": "Model Parameters",
         "compatibility_notes": "Compatibility Notes",
         "compatibility_notes_desc": "The local endpoint remains in the form http://127.0.0.1:<port>/translate. If you change the listen port, update XUnity.AutoTranslator Custom.Url as well.",
@@ -308,6 +328,7 @@ UI_TEXT = {
         "minimized_to_tray": "The app was minimized to the system tray.",
         "json_file_filter": "JSON Files (*.json)",
         "builtin_sakura_preset": "Sakura Default",
+        "builtin_general_preset": "General LLM",
         "dialog_ok": "OK",
         "dialog_cancel": "Cancel",
         "dialog_yes": "Yes",
@@ -317,9 +338,10 @@ UI_TEXT = {
 
 BUILTIN_PROMPT_PRESET_NAMES = {
     "sakura预设": "builtin_sakura_preset",
+    "通用大模型预设": "builtin_general_preset",
 }
 
-APP_VERSION = "v1.0.3"
+APP_VERSION = "v1.0.4"
 
 
 def detect_ui_language() -> str:
@@ -536,6 +558,7 @@ class MainWindow(QMainWindow):
             "timeout": self.timeout_spin.value(),
             "newline_mode": self.newline_mode_combo.currentText(),
             "reasoning_effort": self._current_reasoning_effort(),
+            "thinking_mode": self._current_thinking_mode(),
             "temperature": self.temperature_spin.value(),
             "top_p": self.top_p_spin.value(),
             "max_tokens": self.max_tokens_spin.value(),
@@ -566,6 +589,7 @@ class MainWindow(QMainWindow):
         self.timeout_spin.setValue(state["timeout"])
         self.newline_mode_combo.setCurrentText(state["newline_mode"])
         self._set_reasoning_effort(state["reasoning_effort"])
+        self._set_thinking_mode(state.get("thinking_mode", "disabled"))
         self.temperature_spin.setValue(state["temperature"])
         self.top_p_spin.setValue(state["top_p"])
         self.max_tokens_spin.setValue(state["max_tokens"])
@@ -675,6 +699,7 @@ class MainWindow(QMainWindow):
         self.listen_port_spin.valueChanged.connect(self._sync_overview)
         self.timeout_spin.valueChanged.connect(self._sync_overview)
         self.reasoning_effort_combo.currentIndexChanged.connect(self._sync_overview)
+        self.thinking_mode_combo.currentIndexChanged.connect(self._sync_overview)
 
     def _build_title_bar(self):
         self.title_bar = QFrame()
@@ -967,6 +992,19 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(16)
 
+        preset_bar = QHBoxLayout()
+        preset_bar.setSpacing(10)
+        self.config_preset_combo = QComboBox()
+        self.config_preset_combo.addItem(self._t("config_preset_sakura"), "sakura本地")
+        self.config_preset_combo.addItem(self._t("config_preset_general"), "通用大模型")
+        self.apply_config_preset_btn = QPushButton(self._t("apply_config_preset"))
+        self.apply_config_preset_btn.clicked.connect(self._apply_config_preset)
+        preset_bar.addWidget(QLabel(self._t("config_preset")))
+        preset_bar.addWidget(self.config_preset_combo)
+        preset_bar.addWidget(self.apply_config_preset_btn)
+        preset_bar.addStretch()
+        layout.addLayout(preset_bar)
+
         top_row = QHBoxLayout()
         top_row.setSpacing(16)
 
@@ -990,6 +1028,11 @@ class MainWindow(QMainWindow):
         self.reasoning_effort_combo.addItem("low", "low")
         self.reasoning_effort_combo.addItem("medium", "medium")
         self.reasoning_effort_combo.addItem("high", "high")
+        self.reasoning_effort_combo.addItem("xhigh", "xhigh")
+        self.reasoning_effort_combo.addItem("max", "max")
+        self.thinking_mode_combo = QComboBox()
+        self.thinking_mode_combo.addItem(self._t("thinking_disabled"), "disabled")
+        self.thinking_mode_combo.addItem(self._t("thinking_enabled"), "enabled")
 
         connection_form.addRow(self._t("ui_language"), self.ui_language_combo)
         connection_form.addRow("Base URL", self.base_url_edit)
@@ -998,15 +1041,23 @@ class MainWindow(QMainWindow):
         connection_form.addRow(self._t("listen_port"), self.listen_port_spin)
         connection_form.addRow(self._t("timeout_seconds"), self.timeout_spin)
         connection_form.addRow(self._t("newline_mode"), self.newline_mode_combo)
-        connection_form.addRow(self._t("reasoning_effort"), self.reasoning_effort_combo)
+        connection_form.addRow(self._t("thinking_mode"), self.thinking_mode_combo)
 
-        thinking_hint = QLabel(self._t("reasoning_effort_hint"))
+        thinking_hint = QLabel(self._t("thinking_mode_hint"))
         thinking_hint.setObjectName("mutedText")
         thinking_hint.setWordWrap(True)
         connection_form.addRow("", thinking_hint)
 
+        connection_form.addRow(self._t("reasoning_effort"), self.reasoning_effort_combo)
+
+        reasoning_hint = QLabel(self._t("reasoning_effort_hint"))
+        reasoning_hint.setObjectName("mutedText")
+        reasoning_hint.setWordWrap(True)
+        connection_form.addRow("", reasoning_hint)
+
         model_group = QGroupBox(self._t("model_parameters"))
         model_form = QFormLayout(model_group)
+
         self.temperature_spin = QDoubleSpinBox()
         self.temperature_spin.setRange(0.0, 2.0)
         self.temperature_spin.setSingleStep(0.05)
@@ -1058,6 +1109,7 @@ class MainWindow(QMainWindow):
         prompt_bar = QHBoxLayout()
         self.prompt_preset_combo = QComboBox()
         self._refresh_prompt_preset_combo()
+        self.prompt_preset_combo.currentIndexChanged.connect(self._preview_prompt_preset)
         self.prompt_apply_button = QPushButton(self._t("apply_preset"))
         self.prompt_apply_button.clicked.connect(self.apply_prompt_preset)
         self.prompt_save_button = QPushButton(self._t("save_custom_preset"))
@@ -1524,7 +1576,7 @@ class MainWindow(QMainWindow):
 
     def _set_reasoning_effort(self, value: str):
         normalized = str(value or "").strip().lower()
-        index = self.reasoning_effort_combo.findData(normalized if normalized in {"low", "medium", "high"} else "")
+        index = self.reasoning_effort_combo.findData(normalized if normalized in {"low", "medium", "high", "xhigh", "max"} else "")
         if index >= 0:
             self.reasoning_effort_combo.setCurrentIndex(index)
 
@@ -1532,11 +1584,53 @@ class MainWindow(QMainWindow):
         value = self.reasoning_effort_combo.currentData()
         return str(value).strip() if value else ""
 
+    def _set_thinking_mode(self, value: str):
+        normalized = str(value or "").strip().lower()
+        index = self.thinking_mode_combo.findData(normalized if normalized in {"enabled", "disabled"} else "disabled")
+        if index >= 0:
+            self.thinking_mode_combo.setCurrentIndex(index)
+
+    def _current_thinking_mode(self) -> str:
+        value = self.thinking_mode_combo.currentData()
+        return str(value).strip() if value else "disabled"
+
+    def _apply_config_preset(self):
+        preset_key = self.config_preset_combo.currentData()
+        if not preset_key:
+            return
+        preset = CONFIG_PRESETS.get(preset_key)
+        if not preset:
+            return
+        if "base_url" in preset:
+            self.base_url_edit.setText(preset["base_url"])
+        if "model_type" in preset:
+            self.model_type_edit.setText(preset["model_type"])
+        if "temperature" in preset:
+            self.temperature_spin.setValue(preset["temperature"])
+        if "top_p" in preset:
+            self.top_p_spin.setValue(preset["top_p"])
+        if "frequency_penalty" in preset:
+            self.frequency_penalty_spin.setValue(preset["frequency_penalty"])
+        if "thinking" in preset:
+            self._set_thinking_mode(preset["thinking"])
+        if "reasoning_effort" in preset:
+            self._set_reasoning_effort(preset["reasoning_effort"])
+        if "prompt_preset" in preset:
+            prompt_name = preset["prompt_preset"]
+            idx = self.prompt_preset_combo.findData(prompt_name)
+            if idx >= 0:
+                self.prompt_preset_combo.setCurrentIndex(idx)
+        display_name = self.config_preset_combo.currentText()
+        self.append_log("INFO", self._t("config_preset_applied", name=display_name))
+
     def _sync_overview(self):
         model = self.model_type_edit.text().strip() or self._t("not_set")
         base_url = self.base_url_edit.text().strip() or self._t("not_set")
         timeout = f"{self.timeout_spin.value()}{self._t('seconds_suffix')}"
         reasoning = self._current_reasoning_effort() or self._t("default")
+        thinking = self._current_thinking_mode()
+        if thinking == "enabled":
+            reasoning = f"{self._t('thinking_enabled')} / {reasoning}"
 
         self.launch_model_value.setText(model)
         self.launch_base_url_value.setText(base_url)
@@ -1572,6 +1666,7 @@ class MainWindow(QMainWindow):
         self.max_concurrency_spin.setValue(cfg.max_concurrency)
 
         headers = dict(cfg.custom_headers or {})
+        self._set_thinking_mode(headers.pop("thinking", "disabled"))
         self._set_reasoning_effort(headers.pop("reasoning_effort", ""))
         self.custom_headers_edit.setPlainText(json.dumps(headers, ensure_ascii=False, indent=2) if headers else "{}")
         self.system_prompt_edit.setPlainText(cfg.system_prompt)
@@ -1584,6 +1679,11 @@ class MainWindow(QMainWindow):
         prompt = self.prompt_presets.get(preset_name, DEFAULT_SYSTEM_PROMPT)
         self.system_prompt_edit.setPlainText(prompt)
         self.append_log("INFO", self._t("preset_applied", name=self._display_prompt_preset_name(preset_name)))
+
+    def _preview_prompt_preset(self):
+        preset_name = self._selected_prompt_preset_name()
+        if preset_name in self.prompt_presets:
+            self.system_prompt_edit.setPlainText(self.prompt_presets[preset_name])
 
     def _reload_prompt_presets(self):
         self.prompt_presets = dict(self.builtin_prompt_presets)
@@ -1709,6 +1809,10 @@ class MainWindow(QMainWindow):
         headers.pop("reasoning_effort", None)
         if reasoning_effort:
             headers["reasoning_effort"] = reasoning_effort
+        thinking_mode = self._current_thinking_mode()
+        headers.pop("thinking", None)
+        if thinking_mode == "enabled":
+            headers["thinking"] = thinking_mode
 
         return AppConfig(
             base_url=self.base_url_edit.text().strip(),

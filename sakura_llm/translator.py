@@ -259,6 +259,7 @@ class Translator:
     def call_translation_api(self, text, model_params):
         headers = dict(self.config.custom_headers)
         reasoning_effort = headers.pop("reasoning_effort", None)
+        thinking = headers.pop("thinking", None)
         request_data = {
             "model": self.config.model_type,
             "messages": [
@@ -270,6 +271,8 @@ class Translator:
         }
         if reasoning_effort is not None:
             request_data["reasoning_effort"] = reasoning_effort
+        if thinking in ("enabled", "disabled"):
+            request_data["thinking"] = {"type": thinking}
         if self.config.api_key:
             headers["Authorization"] = f"Bearer {self.config.api_key}"
         with self._model_semaphore:

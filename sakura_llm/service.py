@@ -53,6 +53,10 @@ class TranslationService:
         self.logger.info(
             f"参数: temperature={self.config.temperature}, top_p={self.config.top_p}"
         )
+        thinking = self.config.custom_headers.get("thinking", "")
+        reasoning = self.config.custom_headers.get("reasoning_effort", "")
+        if thinking or reasoning:
+            self.logger.info(f"思考模式: {thinking or '关闭'}, 思考强度: {reasoning or '默认'}")
         self.logger.info("=" * 60)
         self.server = WSGIServer(
             ("127.0.0.1", self.config.listen_port),

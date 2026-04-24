@@ -8,8 +8,40 @@ import tempfile
 
 DEFAULT_SYSTEM_PROMPT = """你是一个视觉小说翻译模型，可以通顺地使用给定的术语表以指定的风格将日文翻译成简体中文，并联系上下文正确使用人称代词，注意不要混淆使役态和被动态的主语和宾语，不要擅自添加原文中没有的特殊符号，也不要擅自增加或减少换行。"""
 
+GENERAL_LLM_SYSTEM_PROMPT = """你是一个专业的日文翻译引擎。请将用户提供的日文文本翻译成自然流畅的简体中文。
+要求：
+1. 准确传达原文含义，保持角色语气和说话风格。
+2. 正确处理人称代词，区分使役态与被动态。
+3. 不要添加原文中没有的内容，不要遗漏任何文本。
+4. 保留原文的换行格式和特殊符号（如「」、……等）。
+5. 仅输出翻译结果，不要输出解释或注释。"""
+
 PROMPT_PRESETS = {
     "sakura预设": DEFAULT_SYSTEM_PROMPT,
+    "通用大模型预设": GENERAL_LLM_SYSTEM_PROMPT,
+}
+
+CONFIG_PRESETS = {
+    "sakura本地": {
+        "base_url": "http://127.0.0.1:8080",
+        "model_type": "GalTransl-v4-4B-2601",
+        "temperature": 0.3,
+        "top_p": 0.8,
+        "frequency_penalty": 0.0,
+        "thinking": "disabled",
+        "reasoning_effort": "",
+        "prompt_preset": "sakura预设",
+    },
+    "通用大模型": {
+        "base_url": "https://api.deepseek.com",
+        "model_type": "deepseek-v4-flash",
+        "temperature": 0.3,
+        "top_p": 0.8,
+        "frequency_penalty": 0.0,
+        "thinking": "disabled",
+        "reasoning_effort": "",
+        "prompt_preset": "通用大模型预设",
+    },
 }
 
 
