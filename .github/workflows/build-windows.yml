@@ -55,11 +55,13 @@ jobs:
           '@ | python -
 
       - name: Build executable
+        if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
         run: |
           pyinstaller --noconfirm --clean "XUnity.AutoTranslator-SakuraLLM GUI.spec"
 
       - name: Create zip package
+        if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
         run: |
           $items = @("app.py", "gui", "sakura_llm", "data", "assets", "requirements.txt", "README.md")
@@ -67,12 +69,14 @@ jobs:
           Compress-Archive -Path $items -DestinationPath "dist/XUnity.AutoTranslator-SakuraLLM GUI-windows.zip" -Force
 
       - name: Upload exe artifact
+        if: startsWith(github.ref, 'refs/tags/')
         uses: actions/upload-artifact@v4
         with:
           name: XUnity.AutoTranslator-SakuraLLM-GUI-exe
           path: dist/XUnity.AutoTranslator-SakuraLLM GUI.exe
 
       - name: Upload zip artifact
+        if: startsWith(github.ref, 'refs/tags/')
         uses: actions/upload-artifact@v4
         with:
           name: XUnity.AutoTranslator-SakuraLLM-GUI-zip

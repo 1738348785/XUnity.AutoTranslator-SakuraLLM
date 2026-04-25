@@ -110,10 +110,12 @@ UI_TEXT = {
         "quick_steps_desc": "1. 填写连接参数\n2. 选择深度思考与模型参数\n3. 保存配置\n4. 启动服务\n5. 到测试页验证输出",
         "connection_settings": "连接配置",
         "config_preset": "快速预设",
-        "apply_config_preset": "应用",
+        "apply_config_preset": "恢复默认",
         "config_preset_sakura": "Sakura 本地模型",
         "config_preset_general": "通用大模型",
-        "config_preset_applied": "已应用配置预设: {name}",
+        "config_preset_applied": "已恢复配置预设默认值: {name}",
+        "preset_status_applied": "● 已应用",
+        "preset_status_pending": "● 待应用",
         "default": "默认",
         "model_name": "模型名",
         "listen_port": "监听端口",
@@ -248,10 +250,12 @@ UI_TEXT = {
         "quick_steps_desc": "1. Fill in connection parameters\n2. Choose reasoning effort and model parameters\n3. Save the configuration\n4. Start the service\n5. Validate output in the test page",
         "connection_settings": "Connection Settings",
         "config_preset": "Quick Preset",
-        "apply_config_preset": "Apply",
+        "apply_config_preset": "Restore Defaults",
         "config_preset_sakura": "Sakura Local Model",
         "config_preset_general": "General LLM",
-        "config_preset_applied": "Applied config preset: {name}",
+        "config_preset_applied": "Restored config preset defaults: {name}",
+        "preset_status_applied": "● Applied",
+        "preset_status_pending": "● Pending",
         "default": "Default",
         "model_name": "Model Name",
         "listen_port": "Listen Port",
@@ -341,7 +345,7 @@ BUILTIN_PROMPT_PRESET_NAMES = {
     "通用大模型预设": "builtin_general_preset",
 }
 
-APP_VERSION = "v1.0.4"
+APP_VERSION = "v1.0.5"
 
 
 def detect_ui_language() -> str:
@@ -997,11 +1001,12 @@ class MainWindow(QMainWindow):
         self.config_preset_combo = QComboBox()
         self.config_preset_combo.addItem(self._t("config_preset_sakura"), "sakura本地")
         self.config_preset_combo.addItem(self._t("config_preset_general"), "通用大模型")
-        self.apply_config_preset_btn = QPushButton(self._t("apply_config_preset"))
-        self.apply_config_preset_btn.clicked.connect(self._apply_config_preset)
+        self.config_preset_combo.currentIndexChanged.connect(self._preview_config_preset)
+        self.config_preset_status = QLabel(self._t("preset_status_applied"))
+        self.config_preset_status.setObjectName("presetStatusApplied")
         preset_bar.addWidget(QLabel(self._t("config_preset")))
         preset_bar.addWidget(self.config_preset_combo)
-        preset_bar.addWidget(self.apply_config_preset_btn)
+        preset_bar.addWidget(self.config_preset_status)
         preset_bar.addStretch()
         layout.addLayout(preset_bar)
 
@@ -1034,6 +1039,11 @@ class MainWindow(QMainWindow):
         self.thinking_mode_combo.addItem(self._t("thinking_disabled"), "disabled")
         self.thinking_mode_combo.addItem(self._t("thinking_enabled"), "enabled")
 
+        self.max_retries_spin = QSpinBox()
+        self.max_retries_spin.setRange(1, 20)
+        self.max_concurrency_spin = QSpinBox()
+        self.max_concurrency_spin.setRange(1, 64)
+
         connection_form.addRow(self._t("ui_language"), self.ui_language_combo)
         connection_form.addRow("Base URL", self.base_url_edit)
         connection_form.addRow("API Key", self.api_key_edit)
@@ -1041,19 +1051,8 @@ class MainWindow(QMainWindow):
         connection_form.addRow(self._t("listen_port"), self.listen_port_spin)
         connection_form.addRow(self._t("timeout_seconds"), self.timeout_spin)
         connection_form.addRow(self._t("newline_mode"), self.newline_mode_combo)
-        connection_form.addRow(self._t("thinking_mode"), self.thinking_mode_combo)
-
-        thinking_hint = QLabel(self._t("thinking_mode_hint"))
-        thinking_hint.setObjectName("mutedText")
-        thinking_hint.setWordWrap(True)
-        connection_form.addRow("", thinking_hint)
-
-        connection_form.addRow(self._t("reasoning_effort"), self.reasoning_effort_combo)
-
-        reasoning_hint = QLabel(self._t("reasoning_effort_hint"))
-        reasoning_hint.setObjectName("mutedText")
-        reasoning_hint.setWordWrap(True)
-        connection_form.addRow("", reasoning_hint)
+        connection_form.addRow(self._t("param_max_retries"), self.max_retries_spin)
+        connection_form.addRow(self._t("param_max_concurrency"), self.max_concurrency_spin)
 
         model_group = QGroupBox(self._t("model_parameters"))
         model_form = QFormLayout(model_group)
@@ -1071,18 +1070,26 @@ class MainWindow(QMainWindow):
         self.frequency_penalty_spin.setSingleStep(0.05)
         self.repeat_count_spin = QSpinBox()
         self.repeat_count_spin.setRange(1, 100)
-        self.max_retries_spin = QSpinBox()
-        self.max_retries_spin.setRange(1, 20)
-        self.max_concurrency_spin = QSpinBox()
-        self.max_concurrency_spin.setRange(1, 64)
 
         model_form.addRow(self._t("param_temperature"), self.temperature_spin)
         model_form.addRow(self._t("param_top_p"), self.top_p_spin)
         model_form.addRow(self._t("param_max_tokens"), self.max_tokens_spin)
         model_form.addRow(self._t("param_frequency_penalty"), self.frequency_penalty_spin)
         model_form.addRow(self._t("param_repeat_count"), self.repeat_count_spin)
-        model_form.addRow(self._t("param_max_retries"), self.max_retries_spin)
-        model_form.addRow(self._t("param_max_concurrency"), self.max_concurrency_spin)
+
+        model_form.addRow(self._t("thinking_mode"), self.thinking_mode_combo)
+
+        thinking_hint = QLabel(self._t("thinking_mode_hint"))
+        thinking_hint.setObjectName("mutedText")
+        thinking_hint.setWordWrap(True)
+        model_form.addRow("", thinking_hint)
+
+        model_form.addRow(self._t("reasoning_effort"), self.reasoning_effort_combo)
+
+        reasoning_hint = QLabel(self._t("reasoning_effort_hint"))
+        reasoning_hint.setObjectName("mutedText")
+        reasoning_hint.setWordWrap(True)
+        model_form.addRow("", reasoning_hint)
 
         top_row.addWidget(connection_group, 1)
         top_row.addWidget(model_group, 1)
@@ -1096,6 +1103,23 @@ class MainWindow(QMainWindow):
         compatibility_layout.addWidget(compatibility_text)
         layout.addWidget(compatibility_group)
         layout.addStretch(1)
+
+        self.base_url_edit.textChanged.connect(self._mark_config_modified)
+        self.api_key_edit.textChanged.connect(self._mark_config_modified)
+        self.model_type_edit.textChanged.connect(self._mark_config_modified)
+        self.listen_port_spin.valueChanged.connect(self._mark_config_modified)
+        self.timeout_spin.valueChanged.connect(self._mark_config_modified)
+        self.newline_mode_combo.currentIndexChanged.connect(self._mark_config_modified)
+        self.max_retries_spin.valueChanged.connect(self._mark_config_modified)
+        self.max_concurrency_spin.valueChanged.connect(self._mark_config_modified)
+        self.temperature_spin.valueChanged.connect(self._mark_config_modified)
+        self.top_p_spin.valueChanged.connect(self._mark_config_modified)
+        self.max_tokens_spin.valueChanged.connect(self._mark_config_modified)
+        self.frequency_penalty_spin.valueChanged.connect(self._mark_config_modified)
+        self.repeat_count_spin.valueChanged.connect(self._mark_config_modified)
+        self.thinking_mode_combo.currentIndexChanged.connect(self._mark_config_modified)
+        self.reasoning_effort_combo.currentIndexChanged.connect(self._mark_config_modified)
+
         return self._wrap_scroll_page(content)
 
     def _build_prompt_page(self):
@@ -1123,7 +1147,10 @@ class MainWindow(QMainWindow):
         self.prompt_delete_button.clicked.connect(self.delete_custom_prompt_preset)
         prompt_bar.addWidget(QLabel(self._t("prompt_preset")))
         prompt_bar.addWidget(self.prompt_preset_combo)
+        self.prompt_preset_status = QLabel(self._t("preset_status_applied"))
+        self.prompt_preset_status.setObjectName("presetStatusApplied")
         prompt_bar.addWidget(self.prompt_apply_button)
+        prompt_bar.addWidget(self.prompt_preset_status)
         prompt_bar.addWidget(self.prompt_save_button)
         prompt_bar.addWidget(self.prompt_rename_button)
         prompt_bar.addWidget(self.prompt_delete_button)
@@ -1150,6 +1177,11 @@ class MainWindow(QMainWindow):
         headers_layout.addWidget(headers_hint)
         headers_layout.addWidget(self.custom_headers_edit)
         layout.addWidget(headers_group)
+
+        self.system_prompt_edit.textChanged.connect(self._mark_prompt_modified)
+        self.system_prompt_edit.textChanged.connect(self._mark_config_modified)
+        self.custom_headers_edit.textChanged.connect(self._mark_config_modified)
+        self.prompt_preset_combo.currentIndexChanged.connect(self._mark_config_modified)
 
         return self._wrap_scroll_page(content)
 
@@ -1211,6 +1243,7 @@ class MainWindow(QMainWindow):
     def _wrap_scroll_page(self, content: QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setWidget(content)
         return scroll
@@ -1594,7 +1627,26 @@ class MainWindow(QMainWindow):
         value = self.thinking_mode_combo.currentData()
         return str(value).strip() if value else "disabled"
 
-    def _apply_config_preset(self):
+    def _set_preset_status(self, label: QLabel, status: str):
+        if status == "applied":
+            label.setText(self._t("preset_status_applied"))
+            label.setObjectName("presetStatusApplied")
+        else:
+            label.setText(self._t("preset_status_pending"))
+            label.setObjectName("presetStatusPending")
+        label.setStyleSheet(label.styleSheet())  # force QSS refresh
+
+    def _mark_config_modified(self, *args):
+        if getattr(self, "_is_loading_config", False):
+            return
+        self._set_preset_status(self.config_preset_status, "pending")
+
+    def _mark_prompt_modified(self, *args):
+        if getattr(self, "_is_loading_config", False):
+            return
+        self._set_preset_status(self.prompt_preset_status, "pending")
+
+    def _preview_config_preset(self):
         preset_key = self.config_preset_combo.currentData()
         if not preset_key:
             return
@@ -1620,6 +1672,7 @@ class MainWindow(QMainWindow):
             idx = self.prompt_preset_combo.findData(prompt_name)
             if idx >= 0:
                 self.prompt_preset_combo.setCurrentIndex(idx)
+        self._set_preset_status(self.config_preset_status, "pending")
         display_name = self.config_preset_combo.currentText()
         self.append_log("INFO", self._t("config_preset_applied", name=display_name))
 
@@ -1645,45 +1698,53 @@ class MainWindow(QMainWindow):
                 self.url_label.setText(self._t("local_url_invalid"))
 
     def _load_config_to_form(self):
-        cfg = self.config
-        self._update_language_state(cfg.ui_language)
-        self.custom_prompt_presets = dict(cfg.prompt_presets or {})
-        self._reload_prompt_presets()
-        self._refresh_prompt_preset_combo()
-        self._populate_ui_language_combo(cfg.ui_language)
-        self.base_url_edit.setText(cfg.base_url)
-        self.api_key_edit.setText(cfg.api_key)
-        self.model_type_edit.setText(cfg.model_type)
-        self.listen_port_spin.setValue(cfg.listen_port)
-        self.timeout_spin.setValue(cfg.request_timeout)
-        self.newline_mode_combo.setCurrentText(cfg.newline_mode)
-        self.temperature_spin.setValue(cfg.temperature)
-        self.top_p_spin.setValue(cfg.top_p)
-        self.max_tokens_spin.setValue(cfg.max_tokens)
-        self.frequency_penalty_spin.setValue(cfg.frequency_penalty)
-        self.repeat_count_spin.setValue(cfg.repeat_count)
-        self.max_retries_spin.setValue(cfg.max_retries)
-        self.max_concurrency_spin.setValue(cfg.max_concurrency)
+        self._is_loading_config = True
+        try:
+            cfg = self.config
+            self._update_language_state(cfg.ui_language)
+            self.custom_prompt_presets = dict(cfg.prompt_presets or {})
+            self._reload_prompt_presets()
+            self._refresh_prompt_preset_combo()
+            self._populate_ui_language_combo(cfg.ui_language)
+            self.base_url_edit.setText(cfg.base_url)
+            self.api_key_edit.setText(cfg.api_key)
+            self.model_type_edit.setText(cfg.model_type)
+            self.listen_port_spin.setValue(cfg.listen_port)
+            self.timeout_spin.setValue(cfg.request_timeout)
+            self.newline_mode_combo.setCurrentText(cfg.newline_mode)
+            self.temperature_spin.setValue(cfg.temperature)
+            self.top_p_spin.setValue(cfg.top_p)
+            self.max_tokens_spin.setValue(cfg.max_tokens)
+            self.frequency_penalty_spin.setValue(cfg.frequency_penalty)
+            self.repeat_count_spin.setValue(cfg.repeat_count)
+            self.max_retries_spin.setValue(cfg.max_retries)
+            self.max_concurrency_spin.setValue(cfg.max_concurrency)
 
-        headers = dict(cfg.custom_headers or {})
-        self._set_thinking_mode(headers.pop("thinking", "disabled"))
-        self._set_reasoning_effort(headers.pop("reasoning_effort", ""))
-        self.custom_headers_edit.setPlainText(json.dumps(headers, ensure_ascii=False, indent=2) if headers else "{}")
-        self.system_prompt_edit.setPlainText(cfg.system_prompt)
-        self._sync_prompt_preset_selection(cfg.system_prompt)
-        self.url_label.setText(self._t("local_url", url=cfg.translate_url))
-        self._sync_overview()
+            headers = dict(cfg.custom_headers or {})
+            self._set_thinking_mode(headers.pop("thinking", "disabled"))
+            self._set_reasoning_effort(headers.pop("reasoning_effort", ""))
+            self.custom_headers_edit.setPlainText(json.dumps(headers, ensure_ascii=False, indent=2) if headers else "{}")
+            self.system_prompt_edit.setPlainText(cfg.system_prompt)
+            self._sync_prompt_preset_selection(cfg.system_prompt)
+            self.url_label.setText(self._t("local_url", url=cfg.translate_url))
+            self._sync_overview()
+            self._set_preset_status(self.config_preset_status, "applied")
+            self._set_preset_status(self.prompt_preset_status, "applied")
+        finally:
+            self._is_loading_config = False
 
     def apply_prompt_preset(self):
         preset_name = self._selected_prompt_preset_name()
         prompt = self.prompt_presets.get(preset_name, DEFAULT_SYSTEM_PROMPT)
         self.system_prompt_edit.setPlainText(prompt)
+        self._set_preset_status(self.prompt_preset_status, "pending")
         self.append_log("INFO", self._t("preset_applied", name=self._display_prompt_preset_name(preset_name)))
 
     def _preview_prompt_preset(self):
         preset_name = self._selected_prompt_preset_name()
         if preset_name in self.prompt_presets:
             self.system_prompt_edit.setPlainText(self.prompt_presets[preset_name])
+        self._set_preset_status(self.prompt_preset_status, "pending")
 
     def _reload_prompt_presets(self):
         self.prompt_presets = dict(self.builtin_prompt_presets)
@@ -1895,6 +1956,10 @@ class MainWindow(QMainWindow):
             self._set_running_state()
         else:
             self._set_idle_state()
+        
+        self._set_preset_status(self.config_preset_status, "applied")
+        self._set_preset_status(self.prompt_preset_status, "applied")
+        
         self.append_log("INFO", self._t("config_saved"))
         return True
 

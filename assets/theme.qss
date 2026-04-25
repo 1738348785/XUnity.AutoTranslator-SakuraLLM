@@ -240,3 +240,15 @@ QScrollBar::handle:vertical {
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
     height: 0px;
 }
+QLabel#presetStatusApplied {
+    color: #2ecc71;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 0 6px;
+}
+QLabel#presetStatusPending {
+    color: #f1c40f;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 0 6px;
+}
