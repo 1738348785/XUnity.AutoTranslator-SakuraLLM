@@ -98,10 +98,8 @@ class Translator:
         self.config = config
         self.logger = logger
         self.session = requests.Session()
-        pool_size = max(10, int(getattr(config, "max_concurrency", 2) or 2) * 2)
-        adapter = HTTPAdapter(pool_connections=pool_size, pool_maxsize=pool_size)
-        self.session.mount("http://", adapter)
-        self.session.mount("https://", adapter)
+        self._pool_size = 0
+        self._apply_pool_size(self._desired_pool_size(getattr(config, "max_concurrency", 2)))
         self._cache = OrderedDict()
         self._cache_lock = BoundedSemaphore(1)
         self._inflight = {}
@@ -109,8 +107,21 @@ class Translator:
         concurrency = max(1, int(getattr(config, "max_concurrency", 2) or 1))
         self._model_semaphore = AdjustableSemaphore(concurrency)
 
+    @staticmethod
+    def _desired_pool_size(max_concurrency) -> int:
+        return max(10, int(max_concurrency or 2) * 2)
+
+    def _apply_pool_size(self, pool_size: int) -> None:
+        if pool_size <= self._pool_size:
+            return
+        self._pool_size = pool_size
+        adapter = HTTPAdapter(pool_connections=pool_size, pool_maxsize=pool_size)
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
+
     def set_max_concurrency(self, n: int) -> None:
         self._model_semaphore.set_capacity(n)
+        self._apply_pool_size(self._desired_pool_size(n))
 
     def close(self):
         self.session.close()
@@ -455,7 +466,7 @@ class Translator:
 
     def handle_translation(self, text):
         newline_mode = self.resolve_newline_mode()
-        cache_key = (newline_mode, text.strip())
+        cache_key = (newline_mode, text)
         cached = self._cache_get(cache_key)
         if cached is not None:
             self.logger.info(f"[缓存命中] {text} -> {cached}")
