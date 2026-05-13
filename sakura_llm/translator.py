@@ -11,6 +11,20 @@ from .config import AppConfig
 from .logging_bridge import LoggerBridge
 
 
+_KAOMOJI_RE = re.compile(r"[\(（][^()\r\n]{0,24}[\)）][ゞ゛゜ノﾉっッ]*")
+_SYMBOL_HINT_RE = re.compile(r"[()（）'\"=^~`｀´◇▽≧ωー・<>♥♡❤★☆！？!?_/\\;:～~-]")
+# CJK Unified Ideographs (U+4E00..U+9FFF)
+_KANJI_RE = re.compile(r"[一-鿿]")
+# Hiragana (U+3040..U+309F) + Katakana (U+30A0..U+30FF)
+_KANA_CHAR_RE = re.compile(r"[぀-ゟ゠-ヿ]")
+_ASCII_WORD_RE = re.compile(r"[A-Za-z0-9]{2,}")
+# Subset of Hiragana/Katakana excluding pad codepoints
+_JAPANESE_FRAGMENT_RE = re.compile(r"[぀-ゖゝ-ゟァ-ヺー-ヾ]{1,}")
+_WHITESPACE_SPLIT_RE = re.compile(r"[　\s]+")
+_THINK_TAG_RE = re.compile(r"<think>.*?</think>", flags=re.DOTALL)
+_NEWLINE_SPLIT_RE = re.compile(r"(\r\n|\r|\n)")
+
+
 class AdjustableSemaphore:
     """Permit-based semaphore whose capacity can be changed at runtime.
     Shrinking does not interrupt in-flight holders; capacity tightens as permits are released.
@@ -122,22 +136,22 @@ class Translator:
 
         def replace(match):
             segment = match.group(0)
-            has_symbol_hint = re.search(r"[()（）'\"=^~`｀´◇▽≧ωー・<>♥♡❤★☆！？!?_/\\;:～~-]", segment)
-            has_kanji = re.search(r"[\u4E00-\u9FFF]", segment)
-            kana_chars = re.findall(r"[\u3040-\u309F\u30A0-\u30FF]", segment)
-            ascii_words = re.findall(r"[A-Za-z0-9]{2,}", segment)
+            has_symbol_hint = _SYMBOL_HINT_RE.search(segment)
+            has_kanji = _KANJI_RE.search(segment)
+            kana_chars = _KANA_CHAR_RE.findall(segment)
+            ascii_words = _ASCII_WORD_RE.findall(segment)
             if has_symbol_hint and not has_kanji and len(kana_chars) <= 3 and not ascii_words:
                 return ""
             return segment
 
-        return re.sub(r"[\(（][^()\r\n]{0,24}[\)）][ゞ゛゜ノﾉっッ]*", replace, text)
+        return _KAOMOJI_RE.sub(replace, text)
 
     def extract_japanese_fragments(self, text):
         cleaned = self.strip_kaomoji_for_detection(text)
         if not cleaned:
             return []
 
-        raw_fragments = re.findall(r"[\u3040-\u3096\u309D-\u309F\u30A1-\u30FA\u30FC-\u30FE]{1,}", cleaned)
+        raw_fragments = _JAPANESE_FRAGMENT_RE.findall(cleaned)
         fragments = []
         ignored_singletons = {"ー", "ノ", "ﾉ", "ゞ", "゛", "゜", "ッ", "っ"}
 
@@ -178,7 +192,7 @@ class Translator:
         ellipsis_count = text.count('……') + text.count('...')
         if dash_count >= 2 or ellipsis_count >= 2 or (dash_count >= 1 and ellipsis_count >= 1):
             return True
-        segments = re.split(r'[　\s]+', text.strip())
+        segments = _WHITESPACE_SPLIT_RE.split(text.strip())
         if len(segments) >= 2:
             segment_counts = {}
             for seg in segments:
@@ -288,7 +302,7 @@ class Translator:
             content = response_json["choices"][0]["message"]["content"]
         else:
             content = response_json.get("message", {}).get("content", "")
-        content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+        content = _THINK_TAG_RE.sub("", content).strip()
         for pattern in GARBAGE_PATTERNS:
             if pattern in content:
                 idx = content.find(pattern)
@@ -441,7 +455,7 @@ class Translator:
 
     def handle_translation(self, text):
         newline_mode = self.resolve_newline_mode()
-        cache_key = (newline_mode, text)
+        cache_key = (newline_mode, text.strip())
         cached = self._cache_get(cache_key)
         if cached is not None:
             self.logger.info(f"[缓存命中] {text} -> {cached}")
@@ -478,7 +492,7 @@ class Translator:
         if newline_mode == "keep":
             return self.translate_text(text)
         if newline_mode == "split_lines":
-            parts = re.split(r'(\r\n|\r|\n)', text)
+            parts = _NEWLINE_SPLIT_RE.split(text)
             translated_parts = []
             for part in parts:
                 if part in {"\r\n", "\r", "\n"}:

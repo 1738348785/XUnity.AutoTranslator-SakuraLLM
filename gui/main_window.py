@@ -1,38 +1,22 @@
 import json
-import os
-import sys
 from pathlib import Path
 
-import requests
-from PySide6.QtCore import QEvent, QLocale, QPoint, QRect, QSize, QThread, Qt, Signal, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import QAction, QCloseEvent, QColor, QCursor, QIcon, QPainter, QPen, QTextCharFormat, QTextCursor
+from PySide6.QtCore import QPoint, QSize, Qt
+from PySide6.QtGui import QCloseEvent, QColor, QIcon, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
-    QComboBox,
-    QDoubleSpinBox,
     QFileDialog,
-    QFormLayout,
     QFrame,
-    QGraphicsOpacityEffect,
-    QGridLayout,
-    QGroupBox,
     QHBoxLayout,
-    QInputDialog,
     QLabel,
-    QLineEdit,
     QMainWindow,
-    QMenu,
     QMessageBox,
-    QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QSizePolicy,
-    QSpinBox,
     QStackedWidget,
-    QStyle,
     QSystemTrayIcon,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -45,423 +29,27 @@ from sakura_llm.config import (
     PROMPT_PRESETS,
     get_default_config_path,
 )
-from sakura_llm.logging_bridge import LogEntry, LoggerBridge
-from sakura_llm.service import TranslationService
 
-
-def get_app_resource_path(*parts: str) -> Path:
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        base_dir = Path(sys._MEIPASS)
-    else:
-        base_dir = Path(__file__).resolve().parent.parent
-    return base_dir.joinpath(*parts)
-
-
-UI_TEXT = {
-    "zh_CN": {
-        "page_launch_title": "启动器",
-        "page_launch_desc": "启动本地翻译服务，并查看当前运行状态。",
-        "page_settings_title": "配置中心",
-        "page_settings_desc": "编辑连接参数、模型参数和兼容设置。",
-        "page_prompt_title": "提示词与请求头",
-        "page_prompt_desc": "管理系统提示词、预设和额外请求头。",
-        "page_test_title": "测试翻译",
-        "page_test_desc": "直接调用本地 /translate 接口做端到端验证。",
-        "page_log_title": "运行日志",
-        "page_log_desc": "查看服务日志、错误信息和翻译输出。",
-        "brand_subtitle": "本地翻译启动器",
-        "nav_launch": "启动",
-        "nav_settings": "配置",
-        "nav_prompt": "提示词",
-        "nav_test": "测试",
-        "nav_log": "日志",
-        "sidebar_about": "兼容 XUnity.AutoTranslator\n支持本地 Flask / gevent 服务",
-        "quick_log": "运行日志",
-        "save_config": "保存配置",
-        "import_config": "导入配置",
-        "export_config": "导出配置",
-        "reset_defaults": "恢复默认",
-        "local_service_title": "本地翻译服务",
-        "local_service_desc": "保持与 XUnity.AutoTranslator 的本地 HTTP 调用方式兼容，快速启动、停止并检查当前配置摘要。",
-        "config_center": "配置中心",
-        "translation_test": "翻译测试",
-        "start_service": "启动服务",
-        "stop_service": "停止服务",
-        "quick_status": "快速状态",
-        "idle": "待机",
-        "quick_status_desc": "点击右侧主按钮即可启动或停止本地服务。",
-        "current_model": "当前模型",
-        "reasoning_effort": "深度思考",
-        "upstream_url": "上游地址",
-        "request_timeout": "请求超时",
-        "stop_force_terminated": "服务线程在 3 秒内未能正常停止，强制终止",
-        "backend_reachable": "后端连通正常: {url}",
-        "backend_unreachable": "后端不可达 ({url}): {msg}，翻译请求将会失败",
-        "param_temperature": "温度 (temperature)",
-        "param_top_p": "Top-P 采样 (top_p)",
-        "param_max_tokens": "最大生成长度 (max_tokens)",
-        "param_frequency_penalty": "频率惩罚 (frequency_penalty)",
-        "param_repeat_count": "重复检测阈值 (repeat_count)",
-        "param_max_retries": "最大重试次数 (max_retries)",
-        "param_max_concurrency": "最大并发数 (max_concurrency)",
-        "usage_tips": "使用提示",
-        "usage_tips_desc": "首次使用建议先在“配置中心”填写 Base URL、模型名和端口；如果要调整提示词或额外请求体字段，可在“提示词”页继续设置。",
-        "quick_steps": "快速流程",
-        "quick_steps_desc": "1. 填写连接参数\n2. 选择深度思考与模型参数\n3. 保存配置\n4. 启动服务\n5. 到测试页验证输出",
-        "connection_settings": "连接配置",
-        "config_preset": "快速预设",
-        "apply_config_preset": "恢复默认",
-        "config_preset_sakura": "Sakura 本地模型",
-        "config_preset_general": "通用大模型",
-        "config_preset_applied": "已恢复配置预设默认值: {name}",
-        "preset_status_applied": "● 已应用",
-        "preset_status_pending": "● 待应用",
-        "default": "默认",
-        "model_name": "模型名",
-        "listen_port": "监听端口",
-        "timeout_seconds": "超时(秒)",
-        "newline_mode": "换行模式",
-        "reasoning_effort_hint": "控制请求体中的 reasoning_effort 字段；默认表示不发送该字段。",
-        "thinking_mode": "思考模式",
-        "thinking_disabled": "关闭",
-        "thinking_enabled": "开启",
-        "thinking_mode_hint": "控制请求体中的 thinking 字段；关闭表示不发送该字段。",
-        "model_parameters": "模型参数",
-        "compatibility_notes": "兼容性说明",
-        "compatibility_notes_desc": "本地接口仍保持 http://127.0.0.1:<端口>/translate 形式。若修改监听端口，请同步更新 XUnity.AutoTranslator 的 Custom.Url。",
-        "system_prompt": "系统提示词",
-        "apply_preset": "应用预设",
-        "save_custom_preset": "保存自定义预设",
-        "rename_custom_preset": "重命名自定义预设",
-        "delete_custom_preset": "删除自定义预设",
-        "prompt_preset": "提示词预设",
-        "ui_language": "界面语言",
-        "language_auto": "跟随系统",
-        "custom_headers": "自定义请求头(JSON)",
-        "custom_headers_hint": "用于补充额外请求头。reasoning_effort 已提供单独菜单，一般不需要再手写在这里。",
-        "translation_test_hint": "输入文本后会直接请求本地 /translate 接口，用于验证 GUI → 本地服务 → 上游 API 整条链路。",
-        "translation_test_placeholder": "输入测试文本",
-        "clear_logs": "清空日志",
-        "tray_show_window": "显示窗口",
-        "tray_hide_window": "隐藏窗口",
-        "tray_exit": "退出",
-        "not_set": "未设置",
-        "seconds_suffix": " 秒",
-        "running": "运行中",
-        "local_url": "本地地址: {url}",
-        "local_url_invalid": "本地地址: 配置无效",
-        "preset_applied": "已应用提示词预设: {name}",
-        "notice": "提示",
-        "system_prompt_required": "系统提示词不能为空。",
-        "save_custom_prompt_title": "保存自定义提示词",
-        "preset_name_prompt": "请输入预设名称：",
-        "preset_name_required": "预设名称不能为空。",
-        "builtin_preset_reserved": "该名称已被内置预设占用，请换一个名称。",
-        "overwrite_confirmation": "覆盖确认",
-        "custom_preset_exists": "自定义预设“{name}”已存在，是否覆盖？",
-        "custom_preset_saved": "已保存自定义提示词预设: {name}",
-        "builtin_preset_rename_blocked": "当前选择的是内置预设，不能重命名。",
-        "rename_custom_prompt_title": "重命名自定义提示词",
-        "new_preset_name_prompt": "请输入新的预设名称：",
-        "custom_preset_renamed": "已重命名自定义提示词预设: {old_name} -> {new_name}",
-        "builtin_preset_delete_blocked": "当前选择的是内置预设，不能删除。",
-        "delete_confirmation": "删除确认",
-        "custom_preset_delete_confirm": "确定删除自定义预设“{name}”吗？",
-        "custom_preset_deleted": "已删除自定义提示词预设: {name}",
-        "custom_headers_invalid": "自定义请求头不是有效 JSON：{msg}",
-        "custom_headers_must_be_object": "自定义请求头必须是 JSON 对象。",
-        "status_not_started": "状态: 未启动",
-        "status_running": "状态: 运行中",
-        "status_starting": "状态: 启动中",
-        "status_stopping": "状态: 停止中",
-        "base_url_and_model_required": "Base URL 和 模型名不能为空。",
-        "config_saved": "配置已保存",
-        "import_failed": "导入失败",
-        "config_imported": "已导入配置: {file_path}",
-        "export_failed": "导出失败",
-        "config_exported": "已导出配置: {file_path}",
-        "config_restored": "已恢复默认配置",
-        "port_in_use": "端口占用",
-        "port_in_use_message": "127.0.0.1:{port} 已被占用。",
-        "port_in_use_log": "端口已占用: {port}",
-        "enter_test_text_first": "请先输入测试文本。",
-        "requesting": "请求中...",
-        "service_started_success": "服务启动成功",
-        "service_started_balloon": "本地翻译服务已启动。",
-        "service_error": "服务错误",
-        "minimized_to_tray": "程序已最小化到托盘。",
-        "json_file_filter": "JSON Files (*.json)",
-        "builtin_sakura_preset": "sakura预设",
-        "builtin_general_preset": "通用大模型预设",
-        "dialog_ok": "确定",
-        "dialog_cancel": "取消",
-        "dialog_yes": "是",
-        "dialog_no": "否",
-    },
-    "en": {
-        "page_launch_title": "Launcher",
-        "page_launch_desc": "Start the local translation service and view the current status.",
-        "page_settings_title": "Settings",
-        "page_settings_desc": "Edit connection parameters, model parameters, and compatibility settings.",
-        "page_prompt_title": "Prompts & Headers",
-        "page_prompt_desc": "Manage system prompts, presets, and extra request headers.",
-        "page_test_title": "Translation Test",
-        "page_test_desc": "Call the local /translate endpoint directly for end-to-end validation.",
-        "page_log_title": "Logs",
-        "page_log_desc": "View service logs, errors, and translation output.",
-        "brand_subtitle": "Local Translator Launcher",
-        "nav_launch": "Launch",
-        "nav_settings": "Settings",
-        "nav_prompt": "Prompts",
-        "nav_test": "Test",
-        "nav_log": "Logs",
-        "sidebar_about": "Compatible with XUnity.AutoTranslator\nSupports local Flask / gevent service",
-        "quick_log": "Logs",
-        "save_config": "Save Config",
-        "import_config": "Import Config",
-        "export_config": "Export Config",
-        "reset_defaults": "Reset Defaults",
-        "local_service_title": "Local Translation Service",
-        "local_service_desc": "Keep the local HTTP workflow compatible with XUnity.AutoTranslator. Start, stop, and inspect the current configuration summary quickly.",
-        "config_center": "Settings",
-        "translation_test": "Translation Test",
-        "start_service": "Start Service",
-        "stop_service": "Stop Service",
-        "quick_status": "Quick Status",
-        "idle": "Idle",
-        "quick_status_desc": "Use the main buttons on the right to start or stop the local service.",
-        "current_model": "Current Model",
-        "reasoning_effort": "Reasoning Effort",
-        "upstream_url": "Upstream URL",
-        "request_timeout": "Request Timeout",
-        "stop_force_terminated": "Service thread did not stop within 3 seconds; forcing terminate.",
-        "backend_reachable": "Backend is reachable: {url}",
-        "backend_unreachable": "Backend unreachable ({url}): {msg}. Translation requests will fail.",
-        "param_temperature": "Temperature",
-        "param_top_p": "Top-P Sampling",
-        "param_max_tokens": "Max Tokens",
-        "param_frequency_penalty": "Frequency Penalty",
-        "param_repeat_count": "Repeat Detection Threshold",
-        "param_max_retries": "Max Retries",
-        "param_max_concurrency": "Max Concurrency",
-        "usage_tips": "Usage Tips",
-        "usage_tips_desc": "For first-time use, fill in Base URL, model name, and port in Settings first. If you need to adjust prompts or extra request fields, continue in the Prompts page.",
-        "quick_steps": "Quick Steps",
-        "quick_steps_desc": "1. Fill in connection parameters\n2. Choose reasoning effort and model parameters\n3. Save the configuration\n4. Start the service\n5. Validate output in the test page",
-        "connection_settings": "Connection Settings",
-        "config_preset": "Quick Preset",
-        "apply_config_preset": "Restore Defaults",
-        "config_preset_sakura": "Sakura Local Model",
-        "config_preset_general": "General LLM",
-        "config_preset_applied": "Restored config preset defaults: {name}",
-        "preset_status_applied": "● Applied",
-        "preset_status_pending": "● Pending",
-        "default": "Default",
-        "model_name": "Model Name",
-        "listen_port": "Listen Port",
-        "timeout_seconds": "Timeout (s)",
-        "newline_mode": "Newline Mode",
-        "reasoning_effort_hint": "Controls the reasoning_effort field in the request body. Default means the field is omitted.",
-        "thinking_mode": "Thinking Mode",
-        "thinking_disabled": "Disabled",
-        "thinking_enabled": "Enabled",
-        "thinking_mode_hint": "Controls the thinking field in the request body. Disabled means the field is omitted.",
-        "model_parameters": "Model Parameters",
-        "compatibility_notes": "Compatibility Notes",
-        "compatibility_notes_desc": "The local endpoint remains in the form http://127.0.0.1:<port>/translate. If you change the listen port, update XUnity.AutoTranslator Custom.Url as well.",
-        "system_prompt": "System Prompt",
-        "apply_preset": "Apply Preset",
-        "save_custom_preset": "Save Custom Preset",
-        "rename_custom_preset": "Rename Custom Preset",
-        "delete_custom_preset": "Delete Custom Preset",
-        "prompt_preset": "Prompt Preset",
-        "ui_language": "UI Language",
-        "language_auto": "Auto",
-        "custom_headers": "Custom Headers (JSON)",
-        "custom_headers_hint": "Use this to add extra request headers. reasoning_effort already has a dedicated control, so you usually do not need to write it here.",
-        "translation_test_hint": "After entering text, the GUI calls the local /translate endpoint directly to verify the full chain: GUI -> local service -> upstream API.",
-        "translation_test_placeholder": "Enter test text",
-        "clear_logs": "Clear Logs",
-        "tray_show_window": "Show Window",
-        "tray_hide_window": "Hide Window",
-        "tray_exit": "Exit",
-        "not_set": "Not Set",
-        "seconds_suffix": " s",
-        "running": "Running",
-        "local_url": "Local URL: {url}",
-        "local_url_invalid": "Local URL: Invalid configuration",
-        "preset_applied": "Applied prompt preset: {name}",
-        "notice": "Notice",
-        "system_prompt_required": "System prompt cannot be empty.",
-        "save_custom_prompt_title": "Save Custom Prompt",
-        "preset_name_prompt": "Enter a preset name:",
-        "preset_name_required": "Preset name cannot be empty.",
-        "builtin_preset_reserved": "This name is reserved by a built-in preset. Please choose another name.",
-        "overwrite_confirmation": "Overwrite Confirmation",
-        "custom_preset_exists": "Custom preset \"{name}\" already exists. Overwrite it?",
-        "custom_preset_saved": "Saved custom prompt preset: {name}",
-        "builtin_preset_rename_blocked": "The current selection is a built-in preset and cannot be renamed.",
-        "rename_custom_prompt_title": "Rename Custom Prompt",
-        "new_preset_name_prompt": "Enter a new preset name:",
-        "custom_preset_renamed": "Renamed custom prompt preset: {old_name} -> {new_name}",
-        "builtin_preset_delete_blocked": "The current selection is a built-in preset and cannot be deleted.",
-        "delete_confirmation": "Delete Confirmation",
-        "custom_preset_delete_confirm": "Delete custom preset \"{name}\"?",
-        "custom_preset_deleted": "Deleted custom prompt preset: {name}",
-        "custom_headers_invalid": "Custom headers are not valid JSON: {msg}",
-        "custom_headers_must_be_object": "Custom headers must be a JSON object.",
-        "status_not_started": "Status: Not Started",
-        "status_running": "Status: Running",
-        "status_starting": "Status: Starting",
-        "status_stopping": "Status: Stopping",
-        "base_url_and_model_required": "Base URL and model name cannot be empty.",
-        "config_saved": "Configuration saved",
-        "import_failed": "Import Failed",
-        "config_imported": "Imported configuration: {file_path}",
-        "export_failed": "Export Failed",
-        "config_exported": "Exported configuration: {file_path}",
-        "config_restored": "Default configuration restored",
-        "port_in_use": "Port In Use",
-        "port_in_use_message": "127.0.0.1:{port} is already in use.",
-        "port_in_use_log": "Port already in use: {port}",
-        "enter_test_text_first": "Please enter test text first.",
-        "requesting": "Requesting...",
-        "service_started_success": "Service started successfully",
-        "service_started_balloon": "Local translation service started.",
-        "service_error": "Service Error",
-        "minimized_to_tray": "The app was minimized to the system tray.",
-        "json_file_filter": "JSON Files (*.json)",
-        "builtin_sakura_preset": "Sakura Default",
-        "builtin_general_preset": "General LLM",
-        "dialog_ok": "OK",
-        "dialog_cancel": "Cancel",
-        "dialog_yes": "Yes",
-        "dialog_no": "No",
-    },
-}
-
-BUILTIN_PROMPT_PRESET_NAMES = {
-    "sakura预设": "builtin_sakura_preset",
-    "通用大模型预设": "builtin_general_preset",
-}
-
-APP_VERSION = "v1.0.5"
-
-
-def detect_ui_language() -> str:
-    return "zh_CN" if QLocale.system().language() == QLocale.Language.Chinese else "en"
-
-
-def resolve_ui_language(language_mode: str) -> str:
-    return detect_ui_language() if language_mode == "auto" else language_mode
-
-
-class MaximizeButton(QPushButton):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._maximized = False
-        self.setFixedSize(36, 28)
-
-    def set_maximized(self, maximized: bool):
-        self._maximized = maximized
-        self.update()
-
-    def paintEvent(self, event):
-        super().paintEvent(event)
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
-        pen = QPen(QColor("#f5f5f7"), 1.4)
-        painter.setPen(pen)
-        if self._maximized:
-            painter.drawRect(12, 9, 10, 8)
-            painter.drawRect(15, 12, 10, 8)
-        else:
-            painter.drawRect(12, 10, 12, 9)
-        painter.end()
-
-
-class ServiceThread(QThread):
-    log_received = Signal(str, str)
-    started_ok = Signal()
-    stopped_ok = Signal()
-    failed = Signal(str)
-
-    def __init__(self, config: AppConfig):
-        super().__init__()
-        self.config = config
-        self.service = None
-
-    def _handle_log(self, entry: LogEntry):
-        self.log_received.emit(entry.level, entry.message)
-
-    def run(self):
-        logger = LoggerBridge(self._handle_log)
-        self.service = TranslationService(self.config, logger)
-        started = False
-        try:
-            self.service.start()
-            self.started_ok.emit()
-            started = True
-            self.service.serve_forever()
-        except Exception as e:
-            self.failed.emit(str(e))
-            return
-        finally:
-            if started:
-                self.stopped_ok.emit()
-
-    def stop_service(self):
-        if self.service:
-            self.service.stop()
-
-    def apply_runtime_config(self, config: AppConfig) -> None:
-        if self.service is not None:
-            self.service.apply_runtime_config(config)
-
-
-class TestTranslationThread(QThread):
-    finished_ok = Signal(str)
-    finished_err = Signal(str)
-
-    def __init__(self, url: str, text: str, timeout: int):
-        super().__init__()
-        self.url = url
-        self.text = text
-        self.timeout = timeout
-
-    def run(self):
-        try:
-            response = requests.get(
-                self.url,
-                params={"text": self.text},
-                timeout=self.timeout,
-            )
-            if response.ok:
-                self.finished_ok.emit(response.text)
-            else:
-                self.finished_ok.emit(f"HTTP {response.status_code}\n{response.text}")
-        except Exception as e:
-            self.finished_err.emit(str(e))
-
-
-class HealthCheckThread(QThread):
-    ok = Signal()
-    failed = Signal(str)
-
-    def __init__(self, base_url: str, timeout: int = 5):
-        super().__init__()
-        self.base_url = base_url.rstrip("/")
-        self.timeout = timeout
-
-    def run(self):
-        try:
-            response = requests.get(f"{self.base_url}/v1/models", timeout=self.timeout)
-            if response.ok:
-                self.ok.emit()
-            else:
-                self.failed.emit(f"HTTP {response.status_code}")
-        except Exception as e:
-            self.failed.emit(str(e))
+from . import form_binding
+from .i18n import (
+    BUILTIN_PROMPT_PRESET_NAMES,
+    UI_TEXT,
+    resolve_ui_language,
+)
+from .pages.launch_page import build_launch_page
+from .pages.log_page import build_log_page
+from .pages.prompt_page import build_prompt_page
+from .pages.settings_page import build_settings_page
+from .pages.test_page import build_test_page
+from .resources import APP_VERSION, get_app_resource_path
+from .threads.health_thread import HealthCheckThread
+from .threads.service_thread import ServiceThread
+from .threads.test_thread import TestTranslationThread
+from .widgets import dialogs
+from .widgets.resizable import WindowResizer
+from .widgets.summary_card import create_summary_card
+from .widgets.title_bar import TitleBar
+from .widgets.tray import TrayController
 
 
 class MainWindow(QMainWindow):
@@ -490,7 +78,7 @@ class MainWindow(QMainWindow):
         self.config_store = ConfigStore(get_default_config_path())
         self.config = self.config_store.load()
         self.ui_language_mode = "auto"
-        self.tray_icon = None
+        self.tray: TrayController | None = None
         self._rebuilding_ui = False
         self._update_language_state(self.config.ui_language)
         self.custom_prompt_presets = dict(self.config.prompt_presets or {})
@@ -553,32 +141,20 @@ class MainWindow(QMainWindow):
         self.ui_language_combo.blockSignals(False)
 
     def _snapshot_ui_state(self) -> dict:
-        return {
+        state = form_binding.snapshot_widget_state(self)
+        state.update({
             "page_index": self.page_stack.currentIndex(),
-            "base_url": self.base_url_edit.text(),
-            "api_key": self.api_key_edit.text(),
-            "model_type": self.model_type_edit.text(),
-            "listen_port": self.listen_port_spin.value(),
-            "timeout": self.timeout_spin.value(),
-            "newline_mode": self.newline_mode_combo.currentText(),
             "reasoning_effort": self._current_reasoning_effort(),
             "thinking_mode": self._current_thinking_mode(),
-            "temperature": self.temperature_spin.value(),
-            "top_p": self.top_p_spin.value(),
-            "max_tokens": self.max_tokens_spin.value(),
-            "frequency_penalty": self.frequency_penalty_spin.value(),
-            "repeat_count": self.repeat_count_spin.value(),
-            "max_retries": self.max_retries_spin.value(),
-            "max_concurrency": self.max_concurrency_spin.value(),
             "custom_headers_text": self.custom_headers_edit.toPlainText(),
-            "system_prompt": self.system_prompt_edit.toPlainText(),
             "prompt_preset_name": self._selected_prompt_preset_name(),
             "custom_prompt_presets": dict(self.custom_prompt_presets),
             "ui_language_mode": self._current_ui_language_mode(),
             "test_input": self.test_input.toPlainText(),
             "test_output": self.test_output.toPlainText(),
             "log_output": self.log_output.toPlainText(),
-        }
+        })
+        return state
 
     def _restore_ui_state(self, state: dict):
         self.custom_prompt_presets = dict(state["custom_prompt_presets"])
@@ -586,27 +162,14 @@ class MainWindow(QMainWindow):
         self._refresh_prompt_preset_combo(state["prompt_preset_name"])
         self._populate_ui_language_combo(state["ui_language_mode"])
 
-        self.base_url_edit.setText(state["base_url"])
-        self.api_key_edit.setText(state["api_key"])
-        self.model_type_edit.setText(state["model_type"])
-        self.listen_port_spin.setValue(state["listen_port"])
-        self.timeout_spin.setValue(state["timeout"])
-        self.newline_mode_combo.setCurrentText(state["newline_mode"])
+        form_binding.restore_widget_state(self, state)
         self._set_reasoning_effort(state["reasoning_effort"])
         self._set_thinking_mode(state.get("thinking_mode", "disabled"))
-        self.temperature_spin.setValue(state["temperature"])
-        self.top_p_spin.setValue(state["top_p"])
-        self.max_tokens_spin.setValue(state["max_tokens"])
-        self.frequency_penalty_spin.setValue(state["frequency_penalty"])
-        self.repeat_count_spin.setValue(state["repeat_count"])
-        self.max_retries_spin.setValue(state["max_retries"])
-        self.max_concurrency_spin.setValue(state.get("max_concurrency", 2))
         self.custom_headers_edit.setPlainText(state["custom_headers_text"])
-        self.system_prompt_edit.setPlainText(state["system_prompt"])
         self.test_input.setPlainText(state["test_input"])
         self.test_output.setPlainText(state["test_output"])
         self.log_output.setPlainText(state["log_output"])
-        self._sync_prompt_preset_selection(state["system_prompt"])
+        self._sync_prompt_preset_selection(self.system_prompt_edit.toPlainText())
 
     def _rebuild_ui_for_language_change(self, language_mode: str, persist: bool = True):
         state = self._snapshot_ui_state()
@@ -621,10 +184,9 @@ class MainWindow(QMainWindow):
                 old_central.setParent(None)
                 old_central.deleteLater()
 
-            if self.tray_icon is not None:
-                self.tray_icon.hide()
-                self.tray_icon.deleteLater()
-                self.tray_icon = None
+            if self.tray is not None:
+                self.tray.teardown()
+                self.tray = None
 
             self.nav_buttons = []
             self._build_ui()
@@ -687,11 +249,11 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self._build_header_bar())
 
         self.page_stack = QStackedWidget()
-        self.page_stack.addWidget(self._build_launch_page())
-        self.page_stack.addWidget(self._build_settings_page())
-        self.page_stack.addWidget(self._build_prompt_page())
-        self.page_stack.addWidget(self._build_test_page())
-        self.page_stack.addWidget(self._build_log_page())
+        self.page_stack.addWidget(build_launch_page(self))
+        self.page_stack.addWidget(build_settings_page(self))
+        self.page_stack.addWidget(build_prompt_page(self))
+        self.page_stack.addWidget(build_test_page(self))
+        self.page_stack.addWidget(build_log_page(self))
         main_layout.addWidget(self.page_stack, 1)
 
         shell.addWidget(main_panel, 1)
@@ -706,50 +268,23 @@ class MainWindow(QMainWindow):
         self.thinking_mode_combo.currentIndexChanged.connect(self._sync_overview)
 
     def _build_title_bar(self):
-        self.title_bar = QFrame()
-        self.title_bar.setObjectName("titleBar")
-        self.title_bar.setFixedHeight(46)
-        self.title_bar.mousePressEvent = self._titlebar_mouse_press
-        self.title_bar.mouseMoveEvent = self._titlebar_mouse_move
-        self.title_bar.mouseReleaseEvent = self._titlebar_mouse_release
-        self.title_bar.mouseDoubleClickEvent = self._titlebar_mouse_double_click
+        self.title_bar = TitleBar(
+            title="XUnity.AutoTranslator-SakuraLLM GUI",
+            subtitle="XUnity AutoTranslator Local Bridge",
+        )
+        self.window_title_label = self.title_bar.title_label
+        self.window_subtitle_label = self.title_bar.subtitle_label
+        self.min_button = self.title_bar.min_button
+        self.max_button = self.title_bar.max_button
+        self.close_button = self.title_bar.close_button
 
-        layout = QHBoxLayout(self.title_bar)
-        layout.setContentsMargins(14, 6, 8, 6)
-        layout.setSpacing(10)
-
-        title_box = QVBoxLayout()
-        title_box.setSpacing(0)
-        self.window_title_label = QLabel("XUnity.AutoTranslator-SakuraLLM GUI")
-        self.window_title_label.setObjectName("windowTitleLabel")
-        self.window_subtitle_label = QLabel("XUnity AutoTranslator Local Bridge")
-        self.window_subtitle_label.setObjectName("windowSubtitleLabel")
-        title_box.addWidget(self.window_title_label)
-        title_box.addWidget(self.window_subtitle_label)
-        layout.addLayout(title_box)
-        layout.addStretch()
-
-        title_actions = QHBoxLayout()
-        title_actions.setSpacing(6)
-
-        self.min_button = QPushButton("—")
-        self.min_button.setObjectName("titleButton")
-        self.min_button.setFixedSize(36, 28)
-        self.min_button.clicked.connect(self._minimize_window)
-
-        self.max_button = MaximizeButton()
-        self.max_button.setObjectName("titleButton")
-        self.max_button.clicked.connect(self._toggle_maximize_restore)
-
-        self.close_button = QPushButton("✕")
-        self.close_button.setObjectName("closeTitleButton")
-        self.close_button.setFixedSize(36, 28)
-        self.close_button.clicked.connect(self._close_from_titlebar)
-
-        title_actions.addWidget(self.min_button)
-        title_actions.addWidget(self.max_button)
-        title_actions.addWidget(self.close_button)
-        layout.addLayout(title_actions)
+        self.title_bar.minimize_requested.connect(self._minimize_window)
+        self.title_bar.maximize_toggle_requested.connect(self._toggle_maximize_restore)
+        self.title_bar.close_requested.connect(self._close_from_titlebar)
+        self.title_bar.double_clicked.connect(self._toggle_maximize_restore)
+        self.title_bar.drag_started.connect(self._on_titlebar_drag_started)
+        self.title_bar.drag_moved.connect(self._on_titlebar_drag_moved)
+        self.title_bar.drag_released.connect(self._on_titlebar_drag_released)
         return self.title_bar
 
     def _build_sidebar(self):
@@ -863,383 +398,6 @@ class MainWindow(QMainWindow):
         layout.addLayout(right_box)
         return card
 
-    def _build_launch_page(self):
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(16)
-
-        top_row = QHBoxLayout()
-        top_row.setSpacing(16)
-
-        hero_card = QFrame()
-        hero_card.setObjectName("heroCard")
-        hero_layout = QVBoxLayout(hero_card)
-        hero_layout.setContentsMargins(28, 28, 28, 28)
-        hero_layout.setSpacing(20)
-
-        title = QLabel(self._t("local_service_title"))
-        title.setObjectName("sectionTitle")
-        desc = QLabel(self._t("local_service_desc"))
-        desc.setObjectName("mutedText")
-        desc.setWordWrap(True)
-        desc.setMinimumWidth(300)
-        desc.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.MinimumExpanding)
-        
-        hero_layout.addWidget(title)
-        hero_layout.addWidget(desc)
-        hero_layout.addStretch()
-
-        quick_row = QHBoxLayout()
-        quick_row.setSpacing(12)
-        settings_jump = QPushButton(self._t("config_center"))
-        settings_jump.setObjectName("ghostButton")
-        settings_jump.setMinimumHeight(44)
-        settings_jump.clicked.connect(lambda: self._switch_page(1))
-        test_jump = QPushButton(self._t("translation_test"))
-        test_jump.setObjectName("ghostButton")
-        test_jump.setMinimumHeight(44)
-        test_jump.clicked.connect(lambda: self._switch_page(3))
-        quick_row.addWidget(settings_jump)
-        quick_row.addWidget(test_jump)
-        quick_row.addStretch()
-        hero_layout.addLayout(quick_row)
-
-        top_row.addWidget(hero_card, 5)
-
-        control_card = QFrame()
-        control_card.setObjectName("heroCard")
-        control_layout = QVBoxLayout(control_card)
-        control_layout.setContentsMargins(28, 28, 28, 28)
-        control_layout.setSpacing(20)
-
-        status_hbox = QHBoxLayout()
-        status_label_title = QLabel(self._t("quick_status"))
-        status_label_title.setObjectName("summaryTitle")
-        status_hbox.addWidget(status_label_title)
-        status_hbox.addStretch()
-        
-        self.launch_status_value = QLabel(self._t("idle"))
-        self.launch_status_value.setObjectName("heroStatus")
-        self.launch_status_value.setMinimumWidth(150)
-        self.launch_status_value.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        
-        control_layout.addLayout(status_hbox)
-        control_layout.addWidget(self.launch_status_value)
-        control_layout.addStretch()
-
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(12)
-        self.start_button = QPushButton(self._t("start_service"))
-        self.start_button.setObjectName("primaryButton")
-        self.start_button.setMinimumHeight(44)
-        self.stop_button = QPushButton(self._t("stop_service"))
-        self.stop_button.setObjectName("dangerButton")
-        self.stop_button.setMinimumHeight(44)
-        self.start_button.clicked.connect(self.start_service)
-        self.stop_button.clicked.connect(self.stop_service)
-        
-        btn_row.addWidget(self.stop_button, 1)
-        btn_row.addWidget(self.start_button, 1)
-        
-        control_layout.addLayout(btn_row)
-
-        top_row.addWidget(control_card, 4)
-
-        layout.addLayout(top_row)
-
-        summary_grid = QGridLayout()
-        summary_grid.setHorizontalSpacing(16)
-        summary_grid.setVerticalSpacing(16)
-        summary_grid.setColumnStretch(0, 1)
-        summary_grid.setColumnStretch(1, 1)
-
-        model_card, self.launch_model_value = self._create_summary_card(self._t("current_model"), 1)
-        reasoning_card, self.launch_reasoning_value = self._create_summary_card(self._t("reasoning_effort"), 2)
-        base_url_card, self.launch_base_url_value = self._create_summary_card(self._t("upstream_url"), 1)
-        timeout_card, self.launch_timeout_value = self._create_summary_card(self._t("request_timeout"), 1)
-
-        summary_grid.addWidget(model_card, 0, 0)
-        summary_grid.addWidget(reasoning_card, 0, 1)
-        summary_grid.addWidget(base_url_card, 1, 0)
-        summary_grid.addWidget(timeout_card, 1, 1)
-        layout.addLayout(summary_grid)
-
-        bottom_row = QHBoxLayout()
-        bottom_row.setSpacing(16)
-
-        hints_group = QGroupBox(self._t("usage_tips"))
-        hint_layout = QVBoxLayout(hints_group)
-        hint = QLabel(self._t("usage_tips_desc"))
-        hint.setWordWrap(True)
-        hint.setMargin(3)
-        hint.setObjectName("mutedText")
-        hint_layout.addWidget(hint)
-
-        steps_group = QGroupBox(self._t("quick_steps"))
-        steps_layout = QVBoxLayout(steps_group)
-        steps = QLabel(self._t("quick_steps_desc"))
-        steps.setWordWrap(True)
-        steps.setMargin(3)
-        steps.setObjectName("mutedText")
-        steps_layout.addWidget(steps)
-
-        bottom_row.addWidget(hints_group, 5)
-        bottom_row.addWidget(steps_group, 4)
-        layout.addLayout(bottom_row)
-        layout.addStretch(1)
-        return self._wrap_scroll_page(page)
-
-    def _build_settings_page(self):
-        content = QWidget()
-        layout = QVBoxLayout(content)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(16)
-
-        preset_bar = QHBoxLayout()
-        preset_bar.setSpacing(10)
-        self.config_preset_combo = QComboBox()
-        self.config_preset_combo.addItem(self._t("config_preset_sakura"), "sakura本地")
-        self.config_preset_combo.addItem(self._t("config_preset_general"), "通用大模型")
-        self.config_preset_combo.currentIndexChanged.connect(self._preview_config_preset)
-        self.config_preset_status = QLabel(self._t("preset_status_applied"))
-        self.config_preset_status.setObjectName("presetStatusApplied")
-        preset_bar.addWidget(QLabel(self._t("config_preset")))
-        preset_bar.addWidget(self.config_preset_combo)
-        preset_bar.addWidget(self.config_preset_status)
-        preset_bar.addStretch()
-        layout.addLayout(preset_bar)
-
-        top_row = QHBoxLayout()
-        top_row.setSpacing(16)
-
-        connection_group = QGroupBox(self._t("connection_settings"))
-        connection_form = QFormLayout(connection_group)
-        self.base_url_edit = QLineEdit()
-        self.api_key_edit = QLineEdit()
-        self.api_key_edit.setEchoMode(QLineEdit.Password)
-        self.model_type_edit = QLineEdit()
-        self.listen_port_spin = QSpinBox()
-        self.listen_port_spin.setRange(1, 65535)
-        self.timeout_spin = QSpinBox()
-        self.timeout_spin.setRange(1, 600)
-        self.newline_mode_combo = QComboBox()
-        self.newline_mode_combo.addItems(["escape", "keep", "split_lines"])
-        self.ui_language_combo = QComboBox()
-        self._populate_ui_language_combo(self.ui_language_mode)
-        self.ui_language_combo.currentIndexChanged.connect(self._on_ui_language_changed)
-        self.reasoning_effort_combo = QComboBox()
-        self.reasoning_effort_combo.addItem(self._t("default"), "")
-        self.reasoning_effort_combo.addItem("low", "low")
-        self.reasoning_effort_combo.addItem("medium", "medium")
-        self.reasoning_effort_combo.addItem("high", "high")
-        self.reasoning_effort_combo.addItem("xhigh", "xhigh")
-        self.reasoning_effort_combo.addItem("max", "max")
-        self.thinking_mode_combo = QComboBox()
-        self.thinking_mode_combo.addItem(self._t("thinking_disabled"), "disabled")
-        self.thinking_mode_combo.addItem(self._t("thinking_enabled"), "enabled")
-
-        self.max_retries_spin = QSpinBox()
-        self.max_retries_spin.setRange(1, 20)
-        self.max_concurrency_spin = QSpinBox()
-        self.max_concurrency_spin.setRange(1, 64)
-
-        connection_form.addRow(self._t("ui_language"), self.ui_language_combo)
-        connection_form.addRow("Base URL", self.base_url_edit)
-        connection_form.addRow("API Key", self.api_key_edit)
-        connection_form.addRow(self._t("model_name"), self.model_type_edit)
-        connection_form.addRow(self._t("listen_port"), self.listen_port_spin)
-        connection_form.addRow(self._t("timeout_seconds"), self.timeout_spin)
-        connection_form.addRow(self._t("newline_mode"), self.newline_mode_combo)
-        connection_form.addRow(self._t("param_max_retries"), self.max_retries_spin)
-        connection_form.addRow(self._t("param_max_concurrency"), self.max_concurrency_spin)
-
-        model_group = QGroupBox(self._t("model_parameters"))
-        model_form = QFormLayout(model_group)
-
-        self.temperature_spin = QDoubleSpinBox()
-        self.temperature_spin.setRange(0.0, 2.0)
-        self.temperature_spin.setSingleStep(0.05)
-        self.top_p_spin = QDoubleSpinBox()
-        self.top_p_spin.setRange(0.0, 1.0)
-        self.top_p_spin.setSingleStep(0.05)
-        self.max_tokens_spin = QSpinBox()
-        self.max_tokens_spin.setRange(1, 32768)
-        self.frequency_penalty_spin = QDoubleSpinBox()
-        self.frequency_penalty_spin.setRange(0.0, 2.0)
-        self.frequency_penalty_spin.setSingleStep(0.05)
-        self.repeat_count_spin = QSpinBox()
-        self.repeat_count_spin.setRange(1, 100)
-
-        model_form.addRow(self._t("param_temperature"), self.temperature_spin)
-        model_form.addRow(self._t("param_top_p"), self.top_p_spin)
-        model_form.addRow(self._t("param_max_tokens"), self.max_tokens_spin)
-        model_form.addRow(self._t("param_frequency_penalty"), self.frequency_penalty_spin)
-        model_form.addRow(self._t("param_repeat_count"), self.repeat_count_spin)
-
-        model_form.addRow(self._t("thinking_mode"), self.thinking_mode_combo)
-
-        thinking_hint = QLabel(self._t("thinking_mode_hint"))
-        thinking_hint.setObjectName("mutedText")
-        thinking_hint.setWordWrap(True)
-        model_form.addRow("", thinking_hint)
-
-        model_form.addRow(self._t("reasoning_effort"), self.reasoning_effort_combo)
-
-        reasoning_hint = QLabel(self._t("reasoning_effort_hint"))
-        reasoning_hint.setObjectName("mutedText")
-        reasoning_hint.setWordWrap(True)
-        model_form.addRow("", reasoning_hint)
-
-        top_row.addWidget(connection_group, 1)
-        top_row.addWidget(model_group, 1)
-        layout.addLayout(top_row)
-
-        compatibility_group = QGroupBox(self._t("compatibility_notes"))
-        compatibility_layout = QVBoxLayout(compatibility_group)
-        compatibility_text = QLabel(self._t("compatibility_notes_desc"))
-        compatibility_text.setObjectName("mutedText")
-        compatibility_text.setWordWrap(True)
-        compatibility_layout.addWidget(compatibility_text)
-        layout.addWidget(compatibility_group)
-        layout.addStretch(1)
-
-        self.base_url_edit.textChanged.connect(self._mark_config_modified)
-        self.api_key_edit.textChanged.connect(self._mark_config_modified)
-        self.model_type_edit.textChanged.connect(self._mark_config_modified)
-        self.listen_port_spin.valueChanged.connect(self._mark_config_modified)
-        self.timeout_spin.valueChanged.connect(self._mark_config_modified)
-        self.newline_mode_combo.currentIndexChanged.connect(self._mark_config_modified)
-        self.max_retries_spin.valueChanged.connect(self._mark_config_modified)
-        self.max_concurrency_spin.valueChanged.connect(self._mark_config_modified)
-        self.temperature_spin.valueChanged.connect(self._mark_config_modified)
-        self.top_p_spin.valueChanged.connect(self._mark_config_modified)
-        self.max_tokens_spin.valueChanged.connect(self._mark_config_modified)
-        self.frequency_penalty_spin.valueChanged.connect(self._mark_config_modified)
-        self.repeat_count_spin.valueChanged.connect(self._mark_config_modified)
-        self.thinking_mode_combo.currentIndexChanged.connect(self._mark_config_modified)
-        self.reasoning_effort_combo.currentIndexChanged.connect(self._mark_config_modified)
-
-        return self._wrap_scroll_page(content)
-
-    def _build_prompt_page(self):
-        content = QWidget()
-        layout = QVBoxLayout(content)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(16)
-
-        prompt_group = QGroupBox(self._t("system_prompt"))
-        prompt_layout = QVBoxLayout(prompt_group)
-        prompt_bar = QHBoxLayout()
-        self.prompt_preset_combo = QComboBox()
-        self._refresh_prompt_preset_combo()
-        self.prompt_preset_combo.currentIndexChanged.connect(self._preview_prompt_preset)
-        self.prompt_apply_button = QPushButton(self._t("apply_preset"))
-        self.prompt_apply_button.clicked.connect(self.apply_prompt_preset)
-        self.prompt_save_button = QPushButton(self._t("save_custom_preset"))
-        self.prompt_save_button.setObjectName("ghostButton")
-        self.prompt_save_button.clicked.connect(self.save_custom_prompt_preset)
-        self.prompt_rename_button = QPushButton(self._t("rename_custom_preset"))
-        self.prompt_rename_button.setObjectName("ghostButton")
-        self.prompt_rename_button.clicked.connect(self.rename_custom_prompt_preset)
-        self.prompt_delete_button = QPushButton(self._t("delete_custom_preset"))
-        self.prompt_delete_button.setObjectName("ghostButton")
-        self.prompt_delete_button.clicked.connect(self.delete_custom_prompt_preset)
-        prompt_bar.addWidget(QLabel(self._t("prompt_preset")))
-        prompt_bar.addWidget(self.prompt_preset_combo)
-        self.prompt_preset_status = QLabel(self._t("preset_status_applied"))
-        self.prompt_preset_status.setObjectName("presetStatusApplied")
-        prompt_bar.addWidget(self.prompt_apply_button)
-        prompt_bar.addWidget(self.prompt_preset_status)
-        prompt_bar.addWidget(self.prompt_save_button)
-        prompt_bar.addWidget(self.prompt_rename_button)
-        prompt_bar.addWidget(self.prompt_delete_button)
-        prompt_bar.addStretch()
-
-        self.system_prompt_edit = QPlainTextEdit()
-        self.system_prompt_edit.setPlaceholderText(DEFAULT_SYSTEM_PROMPT)
-        self.system_prompt_edit.setMaximumBlockCount(1000)
-        self.system_prompt_edit.setMinimumHeight(260)
-
-        prompt_layout.addLayout(prompt_bar)
-        prompt_layout.addWidget(self.system_prompt_edit)
-        layout.addWidget(prompt_group, 1)
-
-        headers_group = QGroupBox(self._t("custom_headers"))
-        headers_layout = QVBoxLayout(headers_group)
-        headers_hint = QLabel(self._t("custom_headers_hint"))
-        headers_hint.setObjectName("mutedText")
-        headers_hint.setWordWrap(True)
-        self.custom_headers_edit = QPlainTextEdit()
-        self.custom_headers_edit.setPlaceholderText('{\n  "x-custom-header": "value"\n}')
-        self.custom_headers_edit.setMaximumBlockCount(200)
-        self.custom_headers_edit.setMinimumHeight(160)
-        headers_layout.addWidget(headers_hint)
-        headers_layout.addWidget(self.custom_headers_edit)
-        layout.addWidget(headers_group)
-
-        self.system_prompt_edit.textChanged.connect(self._mark_prompt_modified)
-        self.system_prompt_edit.textChanged.connect(self._mark_config_modified)
-        self.custom_headers_edit.textChanged.connect(self._mark_config_modified)
-        self.prompt_preset_combo.currentIndexChanged.connect(self._mark_config_modified)
-
-        return self._wrap_scroll_page(content)
-
-    def _build_test_page(self):
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(16)
-
-        group = QGroupBox(self._t("translation_test"))
-        group_layout = QVBoxLayout(group)
-        hint = QLabel(self._t("translation_test_hint"))
-        hint.setObjectName("mutedText")
-        hint.setWordWrap(True)
-
-        self.test_input = QTextEdit()
-        self.test_input.setAcceptRichText(False)
-        self.test_input.setPlaceholderText(self._t("translation_test_placeholder"))
-        self.test_output = QPlainTextEdit()
-        self.test_output.setReadOnly(True)
-
-        buttons = QHBoxLayout()
-        self.test_button = QPushButton(self._t("translation_test"))
-        self.test_button.setObjectName("primaryButton")
-        self.test_button.clicked.connect(self.test_translation)
-        buttons.addWidget(self.test_button)
-        buttons.addStretch()
-
-        group_layout.addWidget(hint)
-        group_layout.addWidget(self.test_input, 1)
-        group_layout.addLayout(buttons)
-        group_layout.addWidget(self.test_output, 1)
-        layout.addWidget(group, 1)
-        return page
-
-    def _build_log_page(self):
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(16)
-
-        group = QGroupBox(self._t("page_log_title"))
-        group_layout = QVBoxLayout(group)
-        buttons = QHBoxLayout()
-        self.clear_log_button = QPushButton(self._t("clear_logs"))
-        self.clear_log_button.clicked.connect(self.clear_logs)
-        buttons.addWidget(self.clear_log_button)
-        buttons.addStretch()
-
-        self.log_output = QTextEdit()
-        self.log_output.setReadOnly(True)
-        self.log_output.document().setMaximumBlockCount(5000)
-
-        group_layout.addLayout(buttons)
-        group_layout.addWidget(self.log_output, 1)
-        layout.addWidget(group, 1)
-        return page
-
     def _wrap_scroll_page(self, content: QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -1249,26 +407,8 @@ class MainWindow(QMainWindow):
         return scroll
 
     def _create_summary_card(self, title: str, target_page: int = -1):
-        frame = QFrame()
-        frame.setObjectName("summaryCard")
-        if target_page >= 0:
-            frame.setCursor(Qt.CursorShape.PointingHandCursor)
-            frame.mousePressEvent = lambda e: self._switch_page(target_page)
-
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(18, 16, 18, 16)
-        layout.setSpacing(6)
-
-        title_label = QLabel(title)
-        title_label.setObjectName("summaryTitle")
-        value_label = QLabel("-")
-        value_label.setObjectName("summaryValue")
-        value_label.setWordWrap(True)
-
-        layout.addWidget(title_label)
-        layout.addWidget(value_label)
-        value_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        return frame, value_label
+        on_click = (lambda: self._switch_page(target_page)) if target_page >= 0 else None
+        return create_summary_card(title, on_click)
 
     def _switch_page(self, index: int):
         self.page_stack.setCurrentIndex(index)
@@ -1286,67 +426,10 @@ class MainWindow(QMainWindow):
                 self.setStyleSheet(f.read())
 
     def _dialog_stylesheet(self) -> str:
-        return """
-        QMessageBox, QInputDialog {
-            background-color: #25252b;
-        }
-        QMessageBox QWidget, QInputDialog QWidget {
-            color: #e4e4ea;
-            background-color: #25252b;
-        }
-        QMessageBox QLabel {
-            color: #dddde6;
-            min-width: 0;
-            max-width: 220px;
-        }
-        QInputDialog QLabel {
-            color: #dddde6;
-            min-width: 0;
-        }
-        QMessageBox QPushButton, QInputDialog QPushButton {
-            background-color: #33333a;
-            border: 1px solid #484853;
-            border-radius: 10px;
-            color: #f0f0f4;
-            min-width: 88px;
-            padding: 8px 14px;
-        }
-        QMessageBox QPushButton:hover, QInputDialog QPushButton:hover {
-            background-color: #3a3a43;
-        }
-        QMessageBox QLineEdit, QInputDialog QLineEdit, QInputDialog QComboBox, QInputDialog QListView {
-            background-color: #2e2e35;
-            border: 1px solid #4a4a54;
-            border-radius: 10px;
-            color: #f0f0f4;
-            padding: 8px 10px;
-            selection-background-color: #ff96d3;
-        }
-        """
+        return dialogs.dialog_stylesheet()
 
     def _style_dialog(self, dialog):
-        dialog.setWindowIcon(self.windowIcon())
-        dialog.setStyleSheet(self._dialog_stylesheet())
-        if isinstance(dialog, QInputDialog):
-            dialog.setOkButtonText(self._t("dialog_ok"))
-            dialog.setCancelButtonText(self._t("dialog_cancel"))
-            dialog.adjustSize()
-            return
-
-        for label in dialog.findChildren(QLabel):
-            label.setWordWrap(True)
-        dialog.adjustSize()
-
-        button_text_map = {
-            QMessageBox.StandardButton.Ok: self._t("dialog_ok"),
-            QMessageBox.StandardButton.Cancel: self._t("dialog_cancel"),
-            QMessageBox.StandardButton.Yes: self._t("dialog_yes"),
-            QMessageBox.StandardButton.No: self._t("dialog_no"),
-        }
-        for button_flag, text in button_text_map.items():
-            button = dialog.button(button_flag)
-            if button is not None:
-                button.setText(text)
+        dialogs.style_dialog(dialog, self, self.ui_text)
 
     def _message_box(
         self,
@@ -1356,189 +439,40 @@ class MainWindow(QMainWindow):
         buttons: QMessageBox.StandardButton = QMessageBox.StandardButton.Ok,
         default_button: QMessageBox.StandardButton = QMessageBox.StandardButton.Ok,
     ) -> QMessageBox.StandardButton:
-        dialog = QMessageBox(self)
-        dialog.setIcon(icon)
-        dialog.setWindowTitle(title)
-        dialog.setText(text)
-        dialog.setStandardButtons(buttons)
-        dialog.setDefaultButton(default_button)
-        self._style_dialog(dialog)
-        return QMessageBox.StandardButton(dialog.exec())
+        return dialogs.message_box(self, self.ui_text, icon, title, text, buttons, default_button)
 
     def _show_warning(self, title: str, text: str):
-        self._message_box(QMessageBox.Icon.Warning, title, text)
+        dialogs.show_warning(self, self.ui_text, title, text)
 
     def _show_information(self, title: str, text: str):
-        self._message_box(QMessageBox.Icon.Information, title, text)
+        dialogs.show_information(self, self.ui_text, title, text)
 
     def _show_critical(self, title: str, text: str):
-        self._message_box(QMessageBox.Icon.Critical, title, text)
+        dialogs.show_critical(self, self.ui_text, title, text)
 
     def _ask_yes_no(self, title: str, text: str) -> bool:
-        result = self._message_box(
-            QMessageBox.Icon.Question,
-            title,
-            text,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        return result == QMessageBox.StandardButton.Yes
+        return dialogs.ask_yes_no(self, self.ui_text, title, text)
 
     def _prompt_text(self, title: str, label: str, text: str = "") -> tuple[str, bool]:
-        dialog = QInputDialog(self)
-        dialog.setInputMode(QInputDialog.InputMode.TextInput)
-        dialog.setWindowTitle(title)
-        dialog.setLabelText(label)
-        dialog.setTextValue(text)
-        self._style_dialog(dialog)
-        accepted = bool(dialog.exec())
-        return dialog.textValue(), accepted
+        return dialogs.prompt_text(self, self.ui_text, title, label, text)
 
     def _install_resize_support(self):
-        self._resize_edges = Qt.Edge(0)
-        self._resize_start_global = QPoint()
-        self._resize_start_geom = None
-        self._override_cursor_active = False
-        self._enable_mouse_tracking_recursive(self)
-        app = QApplication.instance()
-        if app is not None:
-            app.installEventFilter(self)
+        self._resizer = WindowResizer(self, margin=self._RESIZE_MARGIN)
+        self._resizer.install()
 
-    def _enable_mouse_tracking_recursive(self, widget):
-        widget.setMouseTracking(True)
-        for child in widget.findChildren(QWidget):
-            child.setMouseTracking(True)
-
-    def eventFilter(self, obj, event):
-        if not isinstance(obj, QWidget) or obj.window() is not self:
-            return super().eventFilter(obj, event)
-        etype = event.type()
-
-        if etype == QEvent.Type.MouseMove:
-            if self._resize_edges:
-                self._perform_resize(event.globalPosition().toPoint())
-                return True
-            if not self.isMaximized() and not self.isFullScreen():
-                self._apply_hover_cursor(self._edges_at(event.globalPosition().toPoint()))
-            else:
-                self._clear_override_cursor()
-        elif etype == QEvent.Type.MouseButtonPress:
-            if (
-                event.button() == Qt.MouseButton.LeftButton
-                and not self.isMaximized()
-                and not self.isFullScreen()
-            ):
-                edges = self._edges_at(event.globalPosition().toPoint())
-                if edges:
-                    self._resize_edges = edges
-                    self._resize_start_global = event.globalPosition().toPoint()
-                    self._resize_start_geom = QRect(self.geometry())
-                    return True
-        elif etype == QEvent.Type.MouseButtonRelease:
-            if self._resize_edges and event.button() == Qt.MouseButton.LeftButton:
-                self._resize_edges = Qt.Edge(0)
-                self._resize_start_geom = None
-                self._clear_override_cursor()
-                return True
-        elif etype == QEvent.Type.Leave and not self._resize_edges:
-            self._clear_override_cursor()
-
-        return super().eventFilter(obj, event)
-
-    def _edges_at(self, global_pos):
-        local = self.mapFromGlobal(global_pos)
-        rect = self.rect()
-        if not rect.contains(local):
-            return Qt.Edge(0)
-        m = self._RESIZE_MARGIN
-        edges = Qt.Edge(0)
-        if local.x() < m:
-            edges |= Qt.Edge.LeftEdge
-        elif local.x() >= rect.width() - m:
-            edges |= Qt.Edge.RightEdge
-        if local.y() < m:
-            edges |= Qt.Edge.TopEdge
-        elif local.y() >= rect.height() - m:
-            edges |= Qt.Edge.BottomEdge
-        return edges
-
-    def _cursor_for_edges(self, edges):
-        L = Qt.Edge.LeftEdge
-        R = Qt.Edge.RightEdge
-        T = Qt.Edge.TopEdge
-        B = Qt.Edge.BottomEdge
-        if edges == (L | T) or edges == (R | B):
-            return Qt.CursorShape.SizeFDiagCursor
-        if edges == (R | T) or edges == (L | B):
-            return Qt.CursorShape.SizeBDiagCursor
-        if edges == L or edges == R:
-            return Qt.CursorShape.SizeHorCursor
-        if edges == T or edges == B:
-            return Qt.CursorShape.SizeVerCursor
-        return None
-
-    def _apply_hover_cursor(self, edges):
-        shape = self._cursor_for_edges(edges)
-        if shape is None:
-            self._clear_override_cursor()
-            return
-        cursor = QCursor(shape)
-        if self._override_cursor_active:
-            QApplication.changeOverrideCursor(cursor)
-        else:
-            QApplication.setOverrideCursor(cursor)
-            self._override_cursor_active = True
-
-    def _clear_override_cursor(self):
-        if self._override_cursor_active:
-            QApplication.restoreOverrideCursor()
-            self._override_cursor_active = False
-
-    def _perform_resize(self, global_pos):
-        delta = global_pos - self._resize_start_global
-        geom = self._resize_start_geom
-        new = QRect(geom)
-        min_w = max(self.minimumWidth(), 1)
-        min_h = max(self.minimumHeight(), 1)
-
-        if self._resize_edges & Qt.Edge.LeftEdge:
-            new.setLeft(min(geom.left() + delta.x(), geom.right() - min_w + 1))
-        if self._resize_edges & Qt.Edge.RightEdge:
-            new.setRight(max(geom.right() + delta.x(), geom.left() + min_w - 1))
-        if self._resize_edges & Qt.Edge.TopEdge:
-            new.setTop(min(geom.top() + delta.y(), geom.bottom() - min_h + 1))
-        if self._resize_edges & Qt.Edge.BottomEdge:
-            new.setBottom(max(geom.bottom() + delta.y(), geom.top() + min_h - 1))
-
-        self.setGeometry(new)
-
-    def _titlebar_mouse_press(self, event):
-        if event.button() == Qt.MouseButton.LeftButton and not self.isMaximized():
+    def _on_titlebar_drag_started(self, global_pos):
+        if not self.isMaximized():
             self._drag_active = True
-            self._drag_pos = event.globalPosition().toPoint()
+            self._drag_pos = global_pos
             self._window_pos = self.frameGeometry().topLeft()
-            event.accept()
-        else:
-            event.ignore()
 
-    def _titlebar_mouse_move(self, event):
+    def _on_titlebar_drag_moved(self, global_pos):
         if self._drag_active and not self.isMaximized():
-            delta = event.globalPosition().toPoint() - self._drag_pos
+            delta = global_pos - self._drag_pos
             self.move(self._window_pos + delta)
-            event.accept()
-        else:
-            event.ignore()
 
-    def _titlebar_mouse_release(self, event):
+    def _on_titlebar_drag_released(self):
         self._drag_active = False
-        event.accept()
-
-    def _titlebar_mouse_double_click(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._toggle_maximize_restore()
-            event.accept()
-        else:
-            event.ignore()
 
     def _minimize_window(self):
         self.showMinimized()
@@ -1564,7 +498,7 @@ class MainWindow(QMainWindow):
 
     def _create_tray_icon(self):
         if not QSystemTrayIcon.isSystemTrayAvailable():
-            self.tray_icon = None
+            self.tray = None
             return
 
         icon = self.windowIcon()
@@ -1572,29 +506,12 @@ class MainWindow(QMainWindow):
             icon = self.style().standardIcon(self.style().StandardPixmap.SP_ComputerIcon)
             self.setWindowIcon(icon)
 
-        self.tray_icon = QSystemTrayIcon(icon, self)
-        menu = QMenu(self)
-
-        show_action = QAction(self._t("tray_show_window"), self)
-        hide_action = QAction(self._t("tray_hide_window"), self)
-        exit_action = QAction(self._t("tray_exit"), self)
-
-        show_action.triggered.connect(self._show_from_tray)
-        hide_action.triggered.connect(self.hide)
-        exit_action.triggered.connect(self._exit_from_tray)
-
-        menu.addAction(show_action)
-        menu.addAction(hide_action)
-        menu.addSeparator()
-        menu.addAction(exit_action)
-
-        self.tray_icon.setContextMenu(menu)
-        self.tray_icon.activated.connect(self._handle_tray_activation)
-        self.tray_icon.show()
-
-    def _handle_tray_activation(self, reason):
-        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
-            self._show_from_tray()
+        self.tray = TrayController(self, self.ui_text)
+        self.tray.show_requested.connect(self._show_from_tray)
+        self.tray.hide_requested.connect(self.hide)
+        self.tray.exit_requested.connect(self._exit_from_tray)
+        if not self.tray.setup(icon):
+            self.tray = None
 
     def _show_from_tray(self):
         self.show()
@@ -1706,25 +623,12 @@ class MainWindow(QMainWindow):
             self._reload_prompt_presets()
             self._refresh_prompt_preset_combo()
             self._populate_ui_language_combo(cfg.ui_language)
-            self.base_url_edit.setText(cfg.base_url)
-            self.api_key_edit.setText(cfg.api_key)
-            self.model_type_edit.setText(cfg.model_type)
-            self.listen_port_spin.setValue(cfg.listen_port)
-            self.timeout_spin.setValue(cfg.request_timeout)
-            self.newline_mode_combo.setCurrentText(cfg.newline_mode)
-            self.temperature_spin.setValue(cfg.temperature)
-            self.top_p_spin.setValue(cfg.top_p)
-            self.max_tokens_spin.setValue(cfg.max_tokens)
-            self.frequency_penalty_spin.setValue(cfg.frequency_penalty)
-            self.repeat_count_spin.setValue(cfg.repeat_count)
-            self.max_retries_spin.setValue(cfg.max_retries)
-            self.max_concurrency_spin.setValue(cfg.max_concurrency)
+            form_binding.load_from_config(self, cfg)
 
             headers = dict(cfg.custom_headers or {})
             self._set_thinking_mode(headers.pop("thinking", "disabled"))
             self._set_reasoning_effort(headers.pop("reasoning_effort", ""))
             self.custom_headers_edit.setPlainText(json.dumps(headers, ensure_ascii=False, indent=2) if headers else "{}")
-            self.system_prompt_edit.setPlainText(cfg.system_prompt)
             self._sync_prompt_preset_selection(cfg.system_prompt)
             self.url_label.setText(self._t("local_url", url=cfg.translate_url))
             self._sync_overview()
@@ -1875,24 +779,15 @@ class MainWindow(QMainWindow):
         if thinking_mode == "enabled":
             headers["thinking"] = thinking_mode
 
+        fields = form_binding.collect_to_dict(self)
+        for key in ("base_url", "api_key", "model_type", "system_prompt"):
+            fields[key] = fields[key].strip()
+
         return AppConfig(
-            base_url=self.base_url_edit.text().strip(),
-            api_key=self.api_key_edit.text().strip(),
-            listen_port=self.listen_port_spin.value(),
             custom_headers=headers,
-            model_type=self.model_type_edit.text().strip(),
-            request_timeout=self.timeout_spin.value(),
-            newline_mode=self.newline_mode_combo.currentText(),
-            repeat_count=self.repeat_count_spin.value(),
-            max_retries=self.max_retries_spin.value(),
-            max_concurrency=self.max_concurrency_spin.value(),
-            temperature=self.temperature_spin.value(),
-            max_tokens=self.max_tokens_spin.value(),
-            top_p=self.top_p_spin.value(),
-            frequency_penalty=self.frequency_penalty_spin.value(),
-            system_prompt=self.system_prompt_edit.toPlainText().strip(),
             prompt_presets=dict(self.custom_prompt_presets),
             ui_language=self._current_ui_language_mode(),
+            **fields,
         )
 
     def _is_service_running(self) -> bool:
@@ -2071,8 +966,8 @@ class MainWindow(QMainWindow):
     def _on_service_started(self):
         self._set_running_state()
         self.append_log("INFO", self._t("service_started_success"))
-        if self.tray_icon:
-            self.tray_icon.showMessage("SakuraLLM GUI", self._t("service_started_balloon"), QSystemTrayIcon.MessageIcon.Information, 2000)
+        if self.tray is not None:
+            self.tray.show_message("SakuraLLM GUI", self._t("service_started_balloon"))
         self._start_backend_health_check()
 
     def _start_backend_health_check(self):
@@ -2106,16 +1001,16 @@ class MainWindow(QMainWindow):
         self._set_idle_state()
 
     def closeEvent(self, event: QCloseEvent):
-        if self.minimize_to_tray and not self.force_exit and self.tray_icon is not None:
+        if self.minimize_to_tray and not self.force_exit and self.tray is not None:
             event.ignore()
             self.hide()
-            self.tray_icon.showMessage("SakuraLLM GUI", self._t("minimized_to_tray"), QSystemTrayIcon.MessageIcon.Information, 2000)
+            self.tray.show_message("SakuraLLM GUI", self._t("minimized_to_tray"))
             return
-            
+
         app = QApplication.instance()
-        if app is not None:
-            app.removeEventFilter(self)
-            
+        if app is not None and getattr(self, "_resizer", None) is not None:
+            self._resizer.uninstall()
+
         self.stop_service()
         if self.service_thread is not None:
             self.service_thread.wait(2000)
@@ -2123,10 +1018,9 @@ class MainWindow(QMainWindow):
             t = getattr(self, attr, None)
             if t is not None and t.isRunning():
                 t.wait(1000)
-        if self.tray_icon is not None:
-            self.tray_icon.hide()
-            self.tray_icon.deleteLater()
-            self.tray_icon = None
+        if self.tray is not None:
+            self.tray.teardown()
+            self.tray = None
             
         super().closeEvent(event)
         
