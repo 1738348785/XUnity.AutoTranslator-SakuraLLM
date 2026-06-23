@@ -16,6 +16,8 @@ The GUI edition of `XUnity.AutoTranslator-SakuraLLM`. Configure, launch, test, a
 - 🎛️ **Live parameter updates** — change `max_concurrency` without restarting the service
 - 💬 **Prompt presets** — switch translation styles with one click
 - 🌐 **Bilingual UI (EN / zh-CN)** + system tray minimization
+- 🩹 **Smart Input Tolerance** — Base URL auto-correction (removes trailing slashes & `/v1`), real-time JSON validation for custom headers, scrollwheel ignore protection for input controls
+- 🔍 **Convenient Debugging** — Real-time log searching/filtering, one-click copy, side-by-side translation testing, and `Ctrl+Enter` shortcut support
 
 ## Quick Start
 
@@ -34,7 +36,7 @@ python app.py
 
 ## Setup Flow
 
-1. Fill in **Base URL** (SakuraLLM or any OpenAI-compatible endpoint, e.g. `http://127.0.0.1:8080`)
+1. Fill in **Base URL** (SakuraLLM or any OpenAI-compatible endpoint, e.g. `http://127.0.0.1:8080`, inputs with `/v1` or trailing slashes are auto-formatted)
 2. Fill in the **model name**
 3. Set the **local listening port** (default 4000)
 4. Tune temperature, Top-P, max concurrency as needed
