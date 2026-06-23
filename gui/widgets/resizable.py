@@ -37,38 +37,41 @@ class WindowResizer(QObject):
             child.setMouseTracking(True)
 
     def eventFilter(self, obj, event):
-        if not isinstance(obj, QWidget) or obj.window() is not self.window:
-            return super().eventFilter(obj, event)
-        etype = event.type()
+        try:
+            if not isinstance(obj, QWidget) or obj.window() is not self.window:
+                return super().eventFilter(obj, event)
+            etype = event.type()
 
-        if etype == QEvent.Type.MouseMove:
-            if self._resize_edges:
-                self._perform_resize(event.globalPosition().toPoint())
-                return True
-            if not self.window.isMaximized() and not self.window.isFullScreen():
-                self._apply_hover_cursor(self._edges_at(event.globalPosition().toPoint()))
-            else:
-                self._clear_override_cursor()
-        elif etype == QEvent.Type.MouseButtonPress:
-            if (
-                event.button() == Qt.MouseButton.LeftButton
-                and not self.window.isMaximized()
-                and not self.window.isFullScreen()
-            ):
-                edges = self._edges_at(event.globalPosition().toPoint())
-                if edges:
-                    self._resize_edges = edges
-                    self._resize_start_global = event.globalPosition().toPoint()
-                    self._resize_start_geom = QRect(self.window.geometry())
+            if etype == QEvent.Type.MouseMove:
+                if self._resize_edges:
+                    self._perform_resize(event.globalPosition().toPoint())
                     return True
-        elif etype == QEvent.Type.MouseButtonRelease:
-            if self._resize_edges and event.button() == Qt.MouseButton.LeftButton:
-                self._resize_edges = Qt.Edge(0)
-                self._resize_start_geom = None
+                if not self.window.isMaximized() and not self.window.isFullScreen():
+                    self._apply_hover_cursor(self._edges_at(event.globalPosition().toPoint()))
+                else:
+                    self._clear_override_cursor()
+            elif etype == QEvent.Type.MouseButtonPress:
+                if (
+                    event.button() == Qt.MouseButton.LeftButton
+                    and not self.window.isMaximized()
+                    and not self.window.isFullScreen()
+                ):
+                    edges = self._edges_at(event.globalPosition().toPoint())
+                    if edges:
+                        self._resize_edges = edges
+                        self._resize_start_global = event.globalPosition().toPoint()
+                        self._resize_start_geom = QRect(self.window.geometry())
+                        return True
+            elif etype == QEvent.Type.MouseButtonRelease:
+                if self._resize_edges and event.button() == Qt.MouseButton.LeftButton:
+                    self._resize_edges = Qt.Edge(0)
+                    self._resize_start_geom = None
+                    self._clear_override_cursor()
+                    return True
+            elif etype == QEvent.Type.Leave and not self._resize_edges:
                 self._clear_override_cursor()
-                return True
-        elif etype == QEvent.Type.Leave and not self._resize_edges:
-            self._clear_override_cursor()
+        except (RuntimeError, AttributeError):
+            pass
 
         return super().eventFilter(obj, event)
 
