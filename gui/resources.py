@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 
 
-APP_VERSION = "v1.0.6"
+APP_VERSION = "v1.0.7"
 
 
 def get_app_resource_path(*parts: str) -> Path:
