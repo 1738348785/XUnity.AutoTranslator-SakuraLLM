@@ -837,6 +837,7 @@ class MainWindow(QMainWindow):
 
         self.config = config
         self.config_store.save(config)
+        self._load_config_to_form()
         if self._is_service_running():
             self.service_thread.apply_runtime_config(config)
             self._set_running_state()

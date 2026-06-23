@@ -65,6 +65,19 @@ class AppConfig:
     prompt_presets: dict = field(default_factory=dict)
     ui_language: str = "auto"
 
+    def __post_init__(self):
+        if self.base_url:
+            url = self.base_url.strip()
+            while True:
+                original = url
+                if url.endswith("/"):
+                    url = url[:-1]
+                elif url.endswith("/v1"):
+                    url = url[:-3]
+                if url == original:
+                    break
+            self.base_url = url
+
     @property
     def translate_url(self) -> str:
         return f"http://127.0.0.1:{self.listen_port}/translate"
