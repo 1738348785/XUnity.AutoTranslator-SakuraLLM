@@ -70,7 +70,7 @@ class WindowResizer(QObject):
                     return True
             elif etype == QEvent.Type.Leave and not self._resize_edges:
                 self._clear_override_cursor()
-        except (RuntimeError, AttributeError):
+        except BaseException:
             pass
 
         return super().eventFilter(obj, event)
