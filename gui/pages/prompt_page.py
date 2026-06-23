@@ -1,5 +1,4 @@
 from PySide6.QtWidgets import (
-    QComboBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -8,6 +7,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from gui.widgets.wheel_ignore import WheelIgnoreComboBox
 
 from sakura_llm.config import DEFAULT_SYSTEM_PROMPT
 
@@ -22,7 +23,7 @@ def build_prompt_page(window) -> QWidget:
     prompt_group = QGroupBox(t("system_prompt"))
     prompt_layout = QVBoxLayout(prompt_group)
     prompt_bar = QHBoxLayout()
-    window.prompt_preset_combo = QComboBox()
+    window.prompt_preset_combo = WheelIgnoreComboBox()
     window._refresh_prompt_preset_combo()
     window.prompt_preset_combo.currentIndexChanged.connect(window._preview_prompt_preset)
     window.prompt_apply_button = QPushButton(t("apply_preset"))
@@ -67,11 +68,25 @@ def build_prompt_page(window) -> QWidget:
     window.custom_headers_edit.setMinimumHeight(160)
     headers_layout.addWidget(headers_hint)
     headers_layout.addWidget(window.custom_headers_edit)
+    window.headers_error_label = QLabel("")
+    window.headers_error_label.setWordWrap(True)
+    headers_layout.addWidget(window.headers_error_label)
     layout.addWidget(headers_group)
+
+    btn_bar = QHBoxLayout()
+    btn_bar.addStretch()
+    
+    window.save_button_prompt = QPushButton(t("save_config"))
+    window.save_button_prompt.setObjectName("primaryButton")
+    window.save_button_prompt.clicked.connect(window.save_config)
+    window.save_button_prompt.setFixedWidth(130)
+    btn_bar.addWidget(window.save_button_prompt)
+    layout.addLayout(btn_bar)
 
     window.system_prompt_edit.textChanged.connect(window._mark_prompt_modified)
     window.system_prompt_edit.textChanged.connect(window._mark_config_modified)
     window.custom_headers_edit.textChanged.connect(window._mark_config_modified)
+    window.custom_headers_edit.textChanged.connect(window._validate_custom_headers)
     window.prompt_preset_combo.currentIndexChanged.connect(window._mark_config_modified)
 
     return window._wrap_scroll_page(content)

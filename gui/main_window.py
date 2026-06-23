@@ -89,6 +89,7 @@ class MainWindow(QMainWindow):
         self.minimize_to_tray = True
         self.force_exit = False
         self.nav_buttons = []
+        self.log_entries = []
 
         self._build_ui()
         self._apply_styles()
@@ -360,42 +361,13 @@ class MainWindow(QMainWindow):
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         layout.addWidget(spacer)
 
-        right_box = QVBoxLayout()
-        right_box.setSpacing(10)
-
-        action_row = QHBoxLayout()
-        action_row.setSpacing(10)
-        self.quick_log_button = QPushButton(self._t("quick_log"))
-        self.quick_log_button.setObjectName("ghostButton")
-        self.quick_log_button.clicked.connect(lambda: self._switch_page(4))
-        self.save_button = QPushButton(self._t("save_config"))
-        self.import_button = QPushButton(self._t("import_config"))
-        self.export_button = QPushButton(self._t("export_config"))
-        self.reset_button = QPushButton(self._t("reset_defaults"))
-        self.save_button.clicked.connect(self.save_config)
-        self.import_button.clicked.connect(self.import_config)
-        self.export_button.clicked.connect(self.export_config)
-        self.reset_button.clicked.connect(self.reset_defaults)
-        
-        action_row.addWidget(self.quick_log_button)
-        action_row.addWidget(self.save_button)
-        action_row.addWidget(self.import_button)
-        action_row.addWidget(self.export_button)
-        action_row.addWidget(self.reset_button)
-
-        info_row = QHBoxLayout()
-        info_row.setSpacing(10)
         self.status_label = QLabel()
         self.status_label.setObjectName("statusPill")
+        self.status_label.setVisible(False)
+
         self.url_label = QLabel()
         self.url_label.setObjectName("urlValue")
-        info_row.addWidget(self.status_label)
-        info_row.addWidget(self.url_label)
-        info_row.addStretch()
-
-        right_box.addLayout(action_row)
-        right_box.addLayout(info_row)
-        layout.addLayout(right_box)
+        layout.addWidget(self.url_label)
         return card
 
     def _wrap_scroll_page(self, content: QWidget):
@@ -606,7 +578,8 @@ class MainWindow(QMainWindow):
         self.launch_base_url_value.setText(base_url)
         self.launch_timeout_value.setText(timeout)
         self.launch_reasoning_value.setText(reasoning)
-        self.launch_status_value.setText(self._t("running") if self._is_service_running() else self._t("idle"))
+        if hasattr(self, "launch_status_value") and self.launch_status_value is not None:
+            self.launch_status_value.setText(self._t("running") if self._is_service_running() else self._t("idle"))
 
         if not self._is_service_running():
             try:
@@ -634,6 +607,7 @@ class MainWindow(QMainWindow):
             self._sync_overview()
             self._set_preset_status(self.config_preset_status, "applied")
             self._set_preset_status(self.prompt_preset_status, "applied")
+            self._validate_custom_headers()
         finally:
             self._is_loading_config = False
 
@@ -797,6 +771,7 @@ class MainWindow(QMainWindow):
         self.status_label.setText(self._t("status_not_started"))
         self.start_button.setEnabled(True)
         self.stop_button.setEnabled(False)
+        self._update_status_style("idle")
         self._sync_overview()
 
     def _set_running_state(self):
@@ -804,19 +779,35 @@ class MainWindow(QMainWindow):
         self.start_button.setEnabled(False)
         self.stop_button.setEnabled(True)
         self.url_label.setText(self._t("local_url", url=self.config.translate_url))
+        self._update_status_style("running")
         self._sync_overview()
 
     def _set_starting_state(self):
         self.status_label.setText(self._t("status_starting"))
         self.start_button.setEnabled(False)
         self.stop_button.setEnabled(False)
+        self._update_status_style("busy")
 
     def _set_stopping_state(self):
         self.status_label.setText(self._t("status_stopping"))
         self.start_button.setEnabled(False)
         self.stop_button.setEnabled(False)
+        self._update_status_style("busy")
 
     def append_log(self, level: str, message: str):
+        entry = (level, message)
+        self.log_entries.append(entry)
+        if len(self.log_entries) > 5000:
+            self.log_entries.pop(0)
+
+        filter_text = ""
+        if hasattr(self, "log_filter_edit") and self.log_filter_edit is not None:
+            filter_text = self.log_filter_edit.text().strip().lower()
+
+        if filter_text:
+            if filter_text not in message.lower() and filter_text not in level.lower():
+                return
+
         color = {
             "INFO": QColor("#dcdcdc"),
             "WARN": QColor("#f1c40f"),
@@ -961,6 +952,7 @@ class MainWindow(QMainWindow):
             self._test_thread = None
 
     def clear_logs(self):
+        self.log_entries.clear()
         self.log_output.clear()
 
     def _on_service_started(self):
@@ -1026,3 +1018,61 @@ class MainWindow(QMainWindow):
         
         if app is not None:
             app.quit()
+
+    def _update_status_style(self, state: str):
+        self.status_label.setProperty("state", state)
+        if hasattr(self, "launch_status_value") and self.launch_status_value is not None:
+            self.launch_status_value.setProperty("state", state)
+        
+        self.status_label.style().unpolish(self.status_label)
+        self.status_label.style().polish(self.status_label)
+        if hasattr(self, "launch_status_value") and self.launch_status_value is not None:
+            self.launch_status_value.style().unpolish(self.launch_status_value)
+            self.launch_status_value.style().polish(self.launch_status_value)
+
+    def _refresh_log_output(self):
+        self.log_output.clear()
+        filter_text = self.log_filter_edit.text().strip().lower()
+        
+        self.log_output.blockSignals(True)
+        cursor = self.log_output.textCursor()
+        cursor.beginEditBlock()
+        for level, message in self.log_entries:
+            if filter_text and filter_text not in message.lower() and filter_text not in level.lower():
+                continue
+            color = {
+                "INFO": QColor("#dcdcdc"),
+                "WARN": QColor("#f1c40f"),
+                "ERROR": QColor("#ff6b6b"),
+            }.get(level, QColor("#dcdcdc"))
+            fmt = QTextCharFormat()
+            fmt.setForeground(color)
+            cursor.insertText(f"[{level}] {message}\n", fmt)
+        cursor.endEditBlock()
+        self.log_output.setTextCursor(cursor)
+        self.log_output.ensureCursorVisible()
+        self.log_output.blockSignals(False)
+
+    def copy_logs(self):
+        text = self.log_output.toPlainText()
+        QApplication.clipboard().setText(text)
+        self.append_log("INFO", self._t("logs_copied"))
+
+    def _validate_custom_headers(self):
+        if not hasattr(self, "custom_headers_edit") or not hasattr(self, "headers_error_label"):
+            return
+        raw = self.custom_headers_edit.toPlainText().strip()
+        if not raw:
+            self.headers_error_label.setText("")
+            return
+        try:
+            data = json.loads(raw)
+            if not isinstance(data, dict):
+                self.headers_error_label.setText(self._t("custom_headers_must_be_object"))
+                self.headers_error_label.setStyleSheet("color: #ff6b6b; font-size: 13px; font-weight: 600; margin-top: 4px;")
+            else:
+                self.headers_error_label.setText(self._t("json_valid"))
+                self.headers_error_label.setStyleSheet("color: #2ecc71; font-size: 13px; font-weight: 600; margin-top: 4px;")
+        except json.JSONDecodeError as e:
+            self.headers_error_label.setText(self._t("custom_headers_invalid", msg=e.msg))
+            self.headers_error_label.setStyleSheet("color: #ff6b6b; font-size: 13px; font-weight: 600; margin-top: 4px;")

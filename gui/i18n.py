@@ -141,6 +141,12 @@ UI_TEXT = {
         "dialog_cancel": "取消",
         "dialog_yes": "是",
         "dialog_no": "否",
+        "copy_logs": "复制日志",
+        "logs_copied": "日志已复制到剪贴板。",
+        "log_filter_placeholder": "过滤日志...",
+        "json_valid": "✓ JSON 格式正确",
+        "test_input_label": "原文 (输入)",
+        "test_output_label": "译文 (输出)",
     },
     "en": {
         "page_launch_title": "Launcher",
@@ -281,6 +287,12 @@ UI_TEXT = {
         "dialog_cancel": "Cancel",
         "dialog_yes": "Yes",
         "dialog_no": "No",
+        "copy_logs": "Copy Logs",
+        "logs_copied": "Logs copied to clipboard.",
+        "log_filter_placeholder": "Filter logs...",
+        "json_valid": "✓ JSON format is valid",
+        "test_input_label": "Source Text (Input)",
+        "test_output_label": "Translation (Output)",
     },
 }
 
