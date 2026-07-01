@@ -84,7 +84,7 @@ Url=http://127.0.0.1:4000/translate
 ## 配置文件位置
 
 - **源码运行**：项目目录下 `data/config.json`
-- **打包 exe**：`.exe` 同级目录下 `data/config.json`
+- **打包 exe**：首次保存配置时，在 `.exe` 同级目录下生成 `data/config.json`
 
 写入采用原子替换，异常断电不会损坏配置。
 

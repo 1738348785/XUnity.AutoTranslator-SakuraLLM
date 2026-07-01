@@ -84,7 +84,7 @@ The custom header takes precedence if both are set.
 ## Config File Location
 
 - **From source**: `data/config.json` in the project directory
-- **Packaged exe**: `data/config.json` next to the `.exe`
+- **Packaged exe**: created as `data/config.json` next to the `.exe` the first time you save settings
 
 Writes are atomic (temp file + replace), so crashes won't corrupt the config.
 
