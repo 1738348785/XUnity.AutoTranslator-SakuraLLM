@@ -1,4 +1,5 @@
 from flask import Flask, request, render_template_string
+import gevent
 from gevent.pywsgi import WSGIServer
 import logging
 
@@ -64,11 +65,18 @@ class TranslationService:
             log=None,
             error_log=None,
         )
+        self.server.start()
 
     def serve_forever(self):
         if self.server is None:
             self.start()
         self.server.serve_forever()
+
+    def serve_until(self, should_stop, poll_interval: float = 0.1):
+        if self.server is None:
+            self.start()
+        while not should_stop():
+            gevent.sleep(poll_interval)
 
     def stop(self):
         if self.server is not None:

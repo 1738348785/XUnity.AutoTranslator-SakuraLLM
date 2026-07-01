@@ -914,16 +914,18 @@ class MainWindow(QMainWindow):
         self._set_starting_state()
         self.service_thread.start()
 
-    def stop_service(self):
+    def stop_service(self, wait_ms: int = 0) -> bool:
         if not self._is_service_running():
             self._set_idle_state()
-            return
+            return True
         self._set_stopping_state()
         self.service_thread.stop_service()
-        if not self.service_thread.wait(3000):
+        if wait_ms <= 0:
+            return True
+        if not self.service_thread.wait(wait_ms):
             self.append_log("WARN", self._t("stop_force_terminated"))
-            self.service_thread.terminate()
-            self.service_thread.wait(1000)
+            return False
+        return True
 
     def test_translation(self):
         text = self.test_input.toPlainText().strip()
@@ -992,6 +994,9 @@ class MainWindow(QMainWindow):
         self.append_log("ERROR", message)
         self._show_critical(self._t("service_error"), message)
         self._set_idle_state()
+        if self.service_thread is not None and not self.service_thread.isRunning():
+            self.service_thread.deleteLater()
+            self.service_thread = None
 
     def closeEvent(self, event: QCloseEvent):
         if self.minimize_to_tray and not self.force_exit and self.tray is not None:
@@ -1004,7 +1009,7 @@ class MainWindow(QMainWindow):
         if app is not None and getattr(self, "_resizer", None) is not None:
             self._resizer.uninstall()
 
-        self.stop_service()
+        self.stop_service(wait_ms=5000)
         if self.service_thread is not None:
             self.service_thread.wait(2000)
         for attr in ("_test_thread", "_health_thread"):

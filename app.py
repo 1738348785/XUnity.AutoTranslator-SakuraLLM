@@ -1,7 +1,6 @@
-import os
 import sys
 from gevent import monkey
-monkey.patch_all()
+monkey.patch_all(thread=False)
 
 import warnings
 warnings.filterwarnings(
@@ -26,7 +25,7 @@ def main():
         app.setWindowIcon(window.windowIcon())
     window.show()
     exit_code = app.exec()
-    os._exit(exit_code)
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":

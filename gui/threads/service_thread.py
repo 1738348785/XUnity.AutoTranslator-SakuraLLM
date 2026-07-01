@@ -27,17 +27,20 @@ class ServiceThread(QThread):
             self.service.start()
             self.started_ok.emit()
             started = True
-            self.service.serve_forever()
+            self.service.serve_until(self.isInterruptionRequested)
         except Exception as e:
-            self.failed.emit(str(e))
+            if not self.isInterruptionRequested():
+                self.failed.emit(str(e))
             return
         finally:
+            if self.service is not None:
+                self.service.stop()
+                self.service = None
             if started:
                 self.stopped_ok.emit()
 
     def stop_service(self):
-        if self.service:
-            self.service.stop()
+        self.requestInterruption()
 
     def apply_runtime_config(self, config: AppConfig) -> None:
         if self.service is not None:
